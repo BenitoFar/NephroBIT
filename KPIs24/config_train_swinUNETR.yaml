@@ -1,6 +1,6 @@
 #Configuration for training
 # File paths
-results_dir: "/home/benito/script/KPIs24/results/"
+results_dir: "/home/benito/script/KPIs24/results"
 datadir: "/data/KPIs24/KPIs24 Training Data/Task1_patch_level/data/"
 
 device_number: 0
@@ -16,21 +16,29 @@ training:
   epoch: 100
   val_interval: 1
   nfolds: 5
-  train_batch_size: 8
+  train_batch_size: 2
   val_batch_size: 1
-  num_workers: 1
+  num_workers: 4
+  cache_rate: 0.5
   learning_rate: 0.001
+  loss: DiceCELoss
+  loss_params: {
+    'lambda_dice': 1.0,
+    'lambda_ce': 1.0
+  }
 
 # Model configuration
 model:
-  name: 'Unet'
+  name: 'SwinUNETR'
   params: {
     'in_channels': 3,
     'spatial_dims': 2,
     'out_channels': 1,
-    'f_maps_channels': [32, 64, 128, 256, 512],
-    'strides': [2, 2, 2, 2],
-    'num_res_units': 2,
+    'feature_size': 24,
+    'num_heads': [3, 6, 12, 24],
+    'depths': [2, 2, 2, 2],
+    'use_v2': False
+
   }
   optimizer: {
     'name': 'Adam',
@@ -58,7 +66,7 @@ model:
 
 # Wandb configuration
 wandb:
-  state: True
+  state: False
   project: 'nefrobit'
   entity: 'nefrobit'
   reinit: true

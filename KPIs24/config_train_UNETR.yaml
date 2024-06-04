@@ -1,0 +1,73 @@
+#Configuration for training
+# File paths
+results_dir: "/home/benito/script/KPIs24/results"
+datadir: "/data/KPIs24/KPIs24 Training Data/Task1_patch_level/data/"
+
+device_number: 0
+seed: 44
+
+preprocessing:
+  image_preprocess: 'CropPosNeg' #'Resize', 
+  roi_size: [512, 512]
+  sw_batch_size: 4
+
+# Training configuration
+training:
+  epoch: 100
+  val_interval: 1
+  nfolds: 5
+  train_batch_size: 2
+  val_batch_size: 1
+  num_workers: 4
+  cache_rate: 0.5
+  learning_rate: 0.001
+  loss: DiceCELoss
+  loss_params: {
+    'lambda_dice': 1.0,
+    'lambda_ce': 1.0
+  }
+
+# Model configuration
+model:
+  name: 'UNETR'
+  params: {
+    'in_channels': 3,
+    'spatial_dims': 2,
+    'out_channels': 1,
+    'feature_size': 16,
+    'hidden_size': 768,
+    'mlp_dim': 3072,
+    'num_heads': 12,
+  }
+  optimizer: {
+    'name': 'Adam',
+    'params': {
+      'learning_rate': 0.001,
+      'weight_decay': 0.0001
+    }
+  }
+
+  # scheduler: {
+  #   'name': 'CosineAnnealingLR',
+  #   'params': {
+  #     'T_max': 10
+  #   }
+  # }
+  
+  scheduler: {
+    'name': 'WarmupCosineSchedule',
+    'params': {
+      'warmup_epochs': 5,
+      'cycles': 0.5
+    }
+  }
+
+
+# Wandb configuration
+wandb:
+  state: False
+  project: 'nefrobit'
+  entity: 'nefrobit'
+  reinit: true
+  resume: 'allow'
+  group_name: 'KPIs24'

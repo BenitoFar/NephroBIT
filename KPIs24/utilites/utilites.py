@@ -41,7 +41,7 @@ def show_image(image, label, predictions = None, filename = None):
     if predictions is not None:
         plt.subplot(1, n_subplots, 3)
         plt.title("prediction")
-        plt.imshow(predictions)
+        plt.imshow(predictions, cmap="gray")
         # plt.colorbar()
     
     if filename:
@@ -65,8 +65,9 @@ def create_log_dir(cfg):
 
 def prepare_data(datadir):
     """prepare data list"""
-    images = sorted(glob(os.path.join(datadir, "**/*img.jpg"), recursive = True))[0:100]
-    labels = sorted(glob(os.path.join(datadir, "**/*mask.jpg"), recursive = True))[0:100]
+    #get 100 random values between 0 and 2000
+    images = sorted(glob(os.path.join(datadir, "**/*img.jpg"), recursive = True))
+    labels = sorted(glob(os.path.join(datadir, "**/*mask.jpg"), recursive = True))
     
     data_list = [
         {"img": _image, "label": _label, 'img_class': os.path.dirname(_image).split('/')[-3], 'img_id': os.path.dirname(_image).split('/')[-2]}
