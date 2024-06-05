@@ -9,7 +9,7 @@ seed: 44
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
   roi_size: [512, 512]
-  sw_batch_size: 4
+  num_samples_per_image: 4
 
 # Training configuration
 training:

@@ -3,13 +3,13 @@
 results_dir: "/home/benito/script/KPIs24/results"
 datadir: "/data/KPIs24/KPIs24 Training Data/Task1_patch_level/data/"
 
-device_number: 0
+device_number: 1
 seed: 44
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
   roi_size: [512, 512]
-  sw_batch_size: 4
+  num_samples_per_image: 4
 
 # Training configuration
 training:

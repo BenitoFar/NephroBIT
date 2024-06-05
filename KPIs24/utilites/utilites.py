@@ -5,7 +5,28 @@ from glob import glob
 import random
 import torch
 from matplotlib import pyplot as plt
-
+from monai.apps.nuclick.transforms import SplitLabelMined
+from monai.transforms import (
+    Activations,
+    EnsureChannelFirstd,
+    AsDiscrete,
+    Compose,
+    LoadImaged,
+    RandCropByPosNegLabeld,
+    RandRotate90d,
+    Lambdad,
+    ComputeHoVerMaps,
+    ScaleIntensityRangeD,
+    RandFlipd,
+    SelectItemsd,
+    LabelToMaskd,
+    Resized,
+    OneOf, 
+    RandGaussianSmoothd, 
+    MedianSmoothd, 
+    RandGaussianNoised
+)
+from skimage import measure
 
 def show_image(image, label, predictions = None, filename = None):
     # print(f"Image: {image.shape}; Label: {label.shape}")
@@ -41,7 +62,7 @@ def show_image(image, label, predictions = None, filename = None):
     if predictions is not None:
         plt.subplot(1, n_subplots, 3)
         plt.title("prediction")
-        plt.imshow(predictions, cmap="gray")
+        plt.imshow(predictions, cmap="gray", interpolation='none')
         # plt.colorbar()
     
     if filename:
@@ -68,7 +89,7 @@ def prepare_data(datadir):
     #get 100 random values between 0 and 2000
     images = sorted(glob(os.path.join(datadir, "**/*img.jpg"), recursive = True))
     labels = sorted(glob(os.path.join(datadir, "**/*mask.jpg"), recursive = True))
-    
+    print('Number of images:', len(images))
     data_list = [
         {"img": _image, "label": _label, 'img_class': os.path.dirname(_image).split('/')[-3], 'img_id': os.path.dirname(_image).split('/')[-2]}
         for _image, _label in zip(images, labels)
@@ -86,4 +107,131 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = False
     
     
-    
+def get_transforms(cfg, phase):
+    if cfg['model']['name'] == 'Unet' or cfg['model']['name'] == 'UNETR' or cfg['model']['name'] == 'SwinUNETR':
+        
+        if cfg['preprocessing']['image_preprocess'] == 'CropPosNeg':
+            if phase == 'train':
+                train_transforms = Compose(
+                        [
+                        LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                        EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                        EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                        SplitLabelMined(keys="label"),
+                        RandCropByPosNegLabeld(
+                            keys=["img", "label"], label_key="label", spatial_size= cfg['preprocessing']['roi_size'], pos=3, neg=1, num_samples=cfg['preprocessing']['num_samples_per_image']
+                        ),
+                        # RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=0),
+                        # RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=1),
+                        # RandRotate90d(keys=("img", "label"), prob=0.5, spatial_axes=(0, 1)),
+                        OneOf(
+                            transforms=[
+                                RandGaussianSmoothd(keys=["img"], sigma_x=(0.1, 1.1), sigma_y=(0.1, 1.1), prob=1.0),
+                                MedianSmoothd(keys=["img"], radius=1),
+                                RandGaussianNoised(keys=["img"], prob=1.0, std=0.05),
+                            ]
+                        ),   
+                        ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True), 
+                        SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                        ]
+                    )
+                return train_transforms
+            elif phase == 'val' or phase == 'test':
+                val_transforms = Compose(
+                        [
+                        LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                        EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                        EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                        SplitLabelMined(keys="label"),
+                        ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                        SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                        ]
+                    )
+                return val_transforms
+            else:
+                raise ValueError(f"Unknown phase: {phase}")
+            
+        elif cfg['preprocessing']['image_preprocess'] == 'Resize':
+            if phase == 'train':
+                train_transforms = Compose(
+                        [
+                            LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                            EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                            EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                            SplitLabelMined(keys="label"),
+                            Resized(keys=("img", "label"), spatial_size=cfg['preprocessing']['roi_size']),
+                            # RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=0),
+                            # RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=1),
+                            # RandRotate90d(keys=("img", "label"), prob=0.5, spatial_axes=(0, 1)),
+                            OneOf(
+                                transforms=[
+                                    RandGaussianSmoothd(keys=["img"], sigma_x=(0.1, 1.1), sigma_y=(0.1, 1.1), prob=1.0),
+                                    MedianSmoothd(keys=["img"], radius=1),
+                                    RandGaussianNoised(keys=["img"], prob=1.0, std=0.05),
+                                ]
+                            ), 
+                            ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                            SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                            ]
+                        )
+                return train_transforms
+            elif phase == 'val' or phase == 'test':
+                val_transforms = Compose(
+                        [
+                            LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                            EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                            EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                            SplitLabelMined(keys="label"),
+                            Resized(keys=("img", "label"), spatial_size=cfg['preprocessing']['roi_size']),
+                            ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                            SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                            ]
+                        )
+                return val_transforms
+            else:
+                raise ValueError(f"Unknown phase: {phase}")
+            
+        else:
+            raise ValueError(f"Unknown image_preprocess: {cfg['preprocessing']['image_preprocess']}")
+    elif cfg['model']['name'] == 'HoverNet':
+        if phase == 'train':
+            train_transforms = Compose(
+                    [
+                        LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                        EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                        EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                        SplitLabelMined(keys="label"),
+                        # RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=0),
+                        # RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=1),
+                        # RandRotate90d(keys=("img", "label"), prob=0.5, spatial_axes=(0, 1)),
+                        OneOf(
+                            transforms=[
+                                RandGaussianSmoothd(keys=["image"], sigma_x=(0.1, 1.1), sigma_y=(0.1, 1.1), prob=1.0),
+                                MedianSmoothd(keys=["image"], radius=1),
+                                RandGaussianNoised(keys=["image"], prob=1.0, std=0.05),
+                            ]
+                        ),
+                        #compute HoVer maps if model name is HoVer-Net
+                        ComputeHoVerMaps(keys=["label"]),
+                        #compute 
+                        ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                        SelectItemsd(keys=("img", "label", "hover_label", "img_id", "img_class")),
+                        ]
+                    )
+            return train_transforms
+        elif phase == 'val' or phase == 'test':
+            val_transforms = Compose(
+                    [
+                        LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                        EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                        EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                        SplitLabelMined(keys="label"),
+                        ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                        SelectItemsd(keys=("img", "label", "img_id", "img_class")),
+                        ]
+                    )
+            return val_transforms
+        else:
+            raise ValueError(f"Unknown phase: {phase}")
+    else:
+        raise ValueError(f"Unknown model name: {cfg['model']['name']}")

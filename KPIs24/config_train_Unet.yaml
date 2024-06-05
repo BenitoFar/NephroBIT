@@ -5,18 +5,19 @@ datadir: "/data/KPIs24/KPIs24 Training Data/Task1_patch_level/data/"
 
 device_number: 0
 seed: 44
+resume_training: False
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
   roi_size: [512, 512]
-  sw_batch_size: 4
+  num_samples_per_image: 4
 
 # Training configuration
 training:
   epoch: 100
   val_interval: 1
   nfolds: 5
-  train_batch_size: 8
+  train_batch_size: 18
   val_batch_size: 1
   num_workers: 4
   cache_rate: 0.5

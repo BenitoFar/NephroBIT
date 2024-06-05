@@ -36,12 +36,13 @@ from monai.transforms import (
     MedianSmoothd, 
     RandGaussianNoised
 )
+from losses import HoVerNetLoss
 from collections import Counter
 import matplotlib.pyplot as plt
 from monai.utils import set_determinism
 import wandb 
 import random
-from utilites import seed_everything, prepare_data, load_config, show_image
+from utilites import seed_everything, prepare_data, load_config, show_image, get_transforms
 from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
 torch.autograd.set_detect_anomaly(True)
 
@@ -98,11 +99,32 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             feature_size = cfg['model']['params']['feature_size'],
             use_v2 = cfg['model']['params']['use_v2'],
         ).to(device)
+    elif cfg['model']['name'] == "HoVerSwinUNETR":
+        model = monai.networks.nets.HoVerSwinUNETR(
+            img_size=cfg['preprocessing']['roi_size'],
+            in_channels=cfg['model']['params']['in_channels'],
+            out_channels=cfg['model']['params']['out_channels'],
+            spatial_dims = cfg['model']['params']['spatial_dims'],
+            depths = cfg['model']['params']['depths'],
+            num_heads = cfg['model']['params']['num_heads'],
+            feature_size = cfg['model']['params']['feature_size'],
+            hovermaps = cfg['model']['params']['hovermaps'],
+            freeze_encoder = cfg['model']['params']['freeze_encoder'],
+            freeze_decoder_bin = cfg['model']['params']['freeze_decoder_bin'],
+        ).to(device)
+    else:
+        raise ValueError(f"Model {cfg['model']['name']} not implemented")
         
     
     if cfg['wandb']['state']: wandb.watch(model, log="all")
 
-    loss_function =  DiceCELoss(sigmoid=True, lambda_dice=cfg['training']['loss_params']['lambda_dice'], lambda_ce=cfg['training']['loss_params']['lambda_ce'])
+    if cfg['training']['loss'] == 'DiceCELoss':
+        loss_function =  DiceCELoss(sigmoid=True, lambda_dice=cfg['training']['loss_params']['lambda_dice'], lambda_ce=cfg['training']['loss_params']['lambda_ce'])
+    elif cfg['training']['loss'] == 'HoVerNetLoss':
+        loss_function = HoVerNetLoss(lambda_ce=0.8, lambda_dice=0.2, hovermaps=cfg['model']['params']['hovermaps'])
+    else:
+        raise ValueError(f"Loss {cfg['training']['loss']} not implemented")
+    
     optimizer = torch.optim.Adam(model.parameters(), cfg['model']['optimizer']['params']['learning_rate'])
     
     if cfg['model']['scheduler']['name'] == "WarmupCosineSchedule":
@@ -258,7 +280,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
         wandb.log({"best_dice_metric": best_metric, "best_metric_epoch": best_metric_epoch})
         wandb.save('model_best.pth')
     progress.write(f'(train completed, best_metric DICE: {best_metric:.4f} at epoch: {best_metric_epoch}\n')
-    
+
+ 
 def main(cfg):
     monai.config.print_config()
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -283,74 +306,8 @@ def main(cfg):
     #split data_list for cross validation - grouped stratify split based on type
     sgkf = StratifiedGroupKFold(n_splits=cfg['training']['nfolds'], shuffle=True, random_state=cfg['seed'])
     
-    # define transforms for image and labelmentation
-    if cfg['preprocessing']['image_preprocess'] == 'CropPosNeg':
-        train_transforms = Compose(
-                [
-                LoadImaged(keys=["img", "label"], dtype=torch.uint8),
-                EnsureChannelFirstd(keys=["img"], channel_dim=-1),
-                EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
-                SplitLabelMined(keys="label"),
-                RandCropByPosNegLabeld(
-                    keys=["img", "label"], label_key="label", spatial_size= cfg['preprocessing']['roi_size'], pos=3, neg=1, num_samples=cfg['preprocessing']['num_samples_per_image']
-                ),
-                # RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=0),
-                # RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=1),
-                # RandRotate90d(keys=("img", "label"), prob=0.5, spatial_axes=(0, 1)),
-                OneOf(
-                    transforms=[
-                        RandGaussianSmoothd(keys=["img"], sigma_x=(0.1, 1.1), sigma_y=(0.1, 1.1), prob=1.0),
-                        MedianSmoothd(keys=["img"], radius=1),
-                        RandGaussianNoised(keys=["img"], prob=1.0, std=0.05),
-                    ]
-                ),   
-                ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0), 
-                SelectItemsd(keys=("img", "label","img_id", "img_class")),
-                ]
-            )
-        
-        val_transforms = Compose(
-                [
-                LoadImaged(keys=["img", "label"], dtype=torch.uint8),
-                EnsureChannelFirstd(keys=["img"], channel_dim=-1),
-                EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
-                SplitLabelMined(keys="label"),
-                ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0),
-                SelectItemsd(keys=("img", "label","img_id", "img_class")),
-                ]
-             )
-    elif cfg['preprocessing']['image_preprocess'] == 'Resize':
-        train_transforms = Compose(
-            [
-                LoadImaged(keys=["img", "label"], dtype=torch.uint8),
-                EnsureChannelFirstd(keys=["img"], channel_dim=-1),
-                EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
-                SplitLabelMined(keys="label"),
-                Resized(keys=("img", "label"), spatial_size=cfg['preprocessing']['roi_size']),
-                OneOf(
-                    transforms=[
-                        RandGaussianSmoothd(keys=["img"], sigma_x=(0.1, 1.1), sigma_y=(0.1, 1.1), prob=1.0),
-                        MedianSmoothd(keys=["img"], radius=1),
-                        RandGaussianNoised(keys=["img"], prob=1.0, std=0.05),
-                    ]
-                ), 
-                ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0),
-                SelectItemsd(keys=("img", "label","img_id", "img_class")),
-                ]
-            )
-        val_transforms = Compose(
-            [
-                LoadImaged(keys=["img", "label"], dtype=torch.uint8),
-                EnsureChannelFirstd(keys=["img"], channel_dim=-1),
-                EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
-                SplitLabelMined(keys="label"),
-                Resized(keys=("img", "label"), spatial_size=cfg['preprocessing']['roi_size']),
-                ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0),
-                SelectItemsd(keys=("img", "label","img_id", "img_class")),
-                ]
-            )
-    else:
-        raise ValueError(f"Preprocessing {cfg['preprocessing']['image_preprocess']} not implemented")
+    train_transforms = get_transforms(cfg, 'train')
+    val_transforms = get_transforms(cfg, 'val')
 
     #train
     #define random groupname to identify all runs of the cross validation
