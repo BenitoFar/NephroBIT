@@ -106,8 +106,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
     optimizer = torch.optim.Adam(model.parameters(), cfg['model']['optimizer']['params']['learning_rate'])
     
     if cfg['model']['scheduler']['name'] == "WarmupCosineSchedule":
-        warmup_steps = int(cfg['model']['scheduler']['params']['warmup_epochs'] * len(train_ds) / train_loader.batch_size)
-        t_total = int(cfg['training']['epoch'] * len(train_ds) / train_loader.batch_size)
+        warmup_steps = int(cfg['model']['scheduler']['params']['warmup_epochs'] * len(train_ds) / cfg['training']['train_batch_size'])
+        t_total = int(cfg['training']['epoch'] * len(train_ds) / cfg['training']['train_batch_size'])
         scheduler = WarmupCosineSchedule(optimizer, warmup_steps=warmup_steps, t_total=t_total, cycles = cfg['model']['scheduler']['params']['cycles'], end_lr=1e-9)
     elif cfg['model']['scheduler']['name'] == "CosineAnnealingLR":
         scheduler = CosineAnnealingLR(optimizer, T_max=cfg['model']['scheduler']['params']['T_max'], eta_min=1e-9)
@@ -158,6 +158,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             loss = loss_function(outputs, labels)
             loss.backward()
             optimizer.step()
+            # step scheduler after each epoch (cosine decay)
+            scheduler.step()
             epoch_loss += loss.item()
             epoch_len = len(train_ds) // train_loader.batch_size
             print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}")
@@ -166,6 +168,7 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             # Update wandb dict
             if cfg['wandb']['state']:
                 wandb.log({"train/loss": loss.item()})
+                wandb.log({"learning_rate": scheduler.get_lr()[0]})
                 # wandb_dict.update({
                 #     : loss.item(),
                 # })
@@ -175,10 +178,6 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
         epoch_loss_values.append(epoch_loss)
         
         print(f"epoch {epoch + 1} average train loss: {epoch_loss:.4f} - learning rate: {scheduler.get_lr()[0]:.5f} - time: {time.time() - epoch_start:.2f} seconds")
-
-        # step scheduler after each epoch (cosine decay)
-        scheduler.step()
-
         if cfg['wandb']['state']:
             # 🐝 log train_loss averaged over epoch to wandb
             # wandb_dict.update({"train/loss_epoch": epoch_loss})
@@ -186,9 +185,10 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             wandb.log({"epoch": epoch+1})
             # 🐝 log learning rate after each epoch to wandb
             # wandb_dict.update({"learning_rate": scheduler.get_lr()[0]})
-            wandb.log({"learning_rate": scheduler.get_lr()[0]})
+        
         progress.write(f'(epoch:{epoch+1} >> train/loss_epoch:{epoch_loss}\n') 
         progress.write(f'(epoch:{epoch+1} >> learning_rate:{scheduler.get_lr()[0]}\n')
+        progress.write(f'(epoch:{epoch+1} >> time:{time.time() - epoch_start:.2f} seconds\n')
         
         if (epoch + 1) % cfg['training']['val_interval'] == 0:
             epoch_start = time.time()

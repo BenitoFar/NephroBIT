@@ -1,10 +1,11 @@
 #Configuration for training
 # File paths
 results_dir: "/home/benito/script/KPIs24/results"
-datadir: "/data/KPIs24/KPIs24 Training Data/Task1_patch_level/data/"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/train/"
 
-device_number: 1
+device_number: 0
 seed: 44
+resume_training: False
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
@@ -20,7 +21,6 @@ training:
   val_batch_size: 1
   num_workers: 4
   cache_rate: 0.5
-  learning_rate: 0.001
   loss: DiceCELoss
   loss_params: {
     'lambda_dice': 1.0,
@@ -35,9 +35,9 @@ model:
     'spatial_dims': 2,
     'out_channels': 1,
     'feature_size': 16,
-    'hidden_size': 768,
-    'mlp_dim': 3072,
-    'num_heads': 12,
+    'hidden_size': 768, # base = 768, small = 384, tiny = 192
+    'mlp_dim': 3072, # base = 3072, small = 1024, tiny = 256
+    'num_heads': 12, #base = 12, small = 6, tiny = 3
   }
   optimizer: {
     'name': 'Adam',
@@ -65,7 +65,7 @@ model:
 
 # Wandb configuration
 wandb:
-  state: False
+  state: True
   project: 'nefrobit'
   entity: 'nefrobit'
   reinit: true

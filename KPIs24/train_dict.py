@@ -211,7 +211,7 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             wandb.log({"learning_rate": scheduler.get_lr()[0]})
         progress.write(f'(epoch:{epoch+1} >> train/loss_epoch:{epoch_loss}\n') 
         progress.write(f'(epoch:{epoch+1} >> learning_rate:{scheduler.get_lr()[0]}\n')
-        
+        progress.write(f'(epoch:{epoch+1} >> time:{time.time() - epoch_start:.2f} seconds\n')
         if (epoch + 1) % cfg['training']['val_interval'] == 0:
             epoch_start = time.time()
             model.eval()

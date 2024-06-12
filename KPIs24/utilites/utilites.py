@@ -26,6 +26,7 @@ from monai.transforms import (
     MedianSmoothd, 
     RandGaussianNoised
 )
+import monai
 from skimage import measure
 
 def show_image(image, label, predictions = None, filename = None):
@@ -235,3 +236,62 @@ def get_transforms(cfg, phase):
             raise ValueError(f"Unknown phase: {phase}")
     else:
         raise ValueError(f"Unknown model name: {cfg['model']['name']}")
+    
+    
+def get_model(cfg, pretrained_path = None):
+    device = torch.device(f"cuda:{cfg['device_number']}" if torch.cuda.is_available() else "cpu")
+    # create UNet, DiceLoss and Adam optimizer
+    if cfg['model']['name'] == "Unet":
+        model = monai.networks.nets.UNet(
+            spatial_dims=cfg['model']['params']['spatial_dims'],
+            in_channels=cfg['model']['params']['in_channels'],
+            out_channels=cfg['model']['params']['out_channels'],
+            channels=cfg['model']['params']['f_maps_channels'],
+            strides=cfg['model']['params']['strides'],
+            num_res_units=cfg['model']['params']['num_res_units'],
+        ).to(device)
+    elif cfg['model']['name'] == "UNETR":
+        model = monai.networks.nets.UNETR(
+            in_channels=cfg['model']['params']['in_channels'],
+            out_channels=cfg['model']['params']['out_channels'],
+            img_size=cfg['preprocessing']['roi_size'],
+            spatial_dims = cfg['model']['params']['spatial_dims'],
+            feature_size=cfg['model']['params']['feature_size'],
+            hidden_size=cfg['model']['params']['hidden_size'],
+            mlp_dim=cfg['model']['params']['mlp_dim'],
+            num_heads=cfg['model']['params']['num_heads'],
+        ).to(device)
+    elif cfg['model']['name'] == "SwinUNETR":
+        model = monai.networks.nets.SwinUNETR(
+            img_size=cfg['preprocessing']['roi_size'],
+            in_channels=cfg['model']['params']['in_channels'],
+            out_channels=cfg['model']['params']['out_channels'],
+            spatial_dims = cfg['model']['params']['spatial_dims'],
+            depths = cfg['model']['params']['depths'],
+            num_heads = cfg['model']['params']['num_heads'],
+            feature_size = cfg['model']['params']['feature_size'],
+            use_v2 = cfg['model']['params']['use_v2'],
+        ).to(device)
+    elif cfg['model']['name'] == "HoVerSwinUNETR":
+        model = monai.networks.nets.HoVerSwinUNETR(
+            img_size=cfg['preprocessing']['roi_size'],
+            in_channels=cfg['model']['params']['in_channels'],
+            out_channels=cfg['model']['params']['out_channels'],
+            spatial_dims = cfg['model']['params']['spatial_dims'],
+            depths = cfg['model']['params']['depths'],
+            num_heads = cfg['model']['params']['num_heads'],
+            feature_size = cfg['model']['params']['feature_size'],
+            hovermaps = cfg['model']['params']['hovermaps'],
+            freeze_encoder = cfg['model']['params']['freeze_encoder'],
+            freeze_decoder_bin = cfg['model']['params']['freeze_decoder_bin'],
+        ).to(device)
+    else:
+        raise ValueError(f"Model {cfg['model']['name']} not implemented")
+    
+    if pretrained_path is not None:
+        model.load_state_dict(torch.load(pretrained_path))
+        print(f"Model loaded from {pretrained_path}")
+    
+    model.eval()
+    
+    return model
