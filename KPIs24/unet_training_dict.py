@@ -130,6 +130,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
     if cfg['resume_training']:
             checkpoint = torch.load(os.path.join(results_dir, "best_metric_model.pth"))
             model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            scheduler.load_state_dict(checkpoint(['scheduler_state_dict']))
             first_epoch = checkpoint['epoch']
             print(f"Resuming training from epoch {first_epoch}")
     else:
@@ -162,16 +164,13 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             scheduler.step()
             epoch_loss += loss.item()
             epoch_len = len(train_ds) // train_loader.batch_size
-            print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}")
-            print("train_loss", loss.item(), " - ", epoch_len * epoch + step, "batches processed")
+            # print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}")
+            # print("train_loss", loss.item(), " - ", epoch_len * epoch + step, "batches processed")
             
             # Update wandb dict
             if cfg['wandb']['state']:
                 wandb.log({"train/loss": loss.item()})
                 wandb.log({"learning_rate": scheduler.get_lr()[0]})
-                # wandb_dict.update({
-                #     : loss.item(),
-                # })
             progress.write(f'(epoch:{epoch+1} >> loss:{loss.item()}\n') 
             
         epoch_loss /= step
@@ -180,12 +179,11 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
         print(f"epoch {epoch + 1} average train loss: {epoch_loss:.4f} - learning rate: {scheduler.get_lr()[0]:.5f} - time: {time.time() - epoch_start:.2f} seconds")
         if cfg['wandb']['state']:
             # 🐝 log train_loss averaged over epoch to wandb
-            # wandb_dict.update({"train/loss_epoch": epoch_loss})
-            wandb.log({"train/loss_epoch": epoch_loss})
+            wandb.log({"train/loss_epoch": epoch_loss, "step": epoch+1})
             wandb.log({"epoch": epoch+1})
             # 🐝 log learning rate after each epoch to wandb
-            # wandb_dict.update({"learning_rate": scheduler.get_lr()[0]})
-        
+            wandb.log({"learning_rate": scheduler.get_lr()[0]})
+             
         progress.write(f'(epoch:{epoch+1} >> train/loss_epoch:{epoch_loss}\n') 
         progress.write(f'(epoch:{epoch+1} >> learning_rate:{scheduler.get_lr()[0]}\n')
         progress.write(f'(epoch:{epoch+1} >> time:{time.time() - epoch_start:.2f} seconds\n')
@@ -211,14 +209,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
                         show_image(val_images[0].cpu().numpy(), val_labels[0].cpu().numpy(), val_outputs[0].cpu().numpy(), os.path.join(results_images_dir,f'fold_{index_fold}_prediction_image_{idx_val}_epoch_{epoch}.png'))
                     # compute metric for current iteration
                     dice_metric(y_pred=val_outputs, y=val_labels)
-                    # dice_metric_batch(y_pred=val_outputs, y=val_labels)
-                    
                 # aggregate the final mean dice result
                 metric = dice_metric.aggregate().item()
-                # metric_batch = dice_metric_batch.aggregate()
-                # metric_tc = metric_batch[0].item()
-                # metric_wt = metric_batch[1].item()
-                # metric_et = metric_batch[2].item()
                 
                 # Update wandb dict
                 if cfg['wandb']['state']:
@@ -228,13 +220,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
                 progress.write(f'(epoch:{epoch+1} >> val/dice_metric:{metric}\n')
                    
                 # reset the status for next validation round
-                dice_metric.reset()
-                # dice_metric_batch.reset()
-                
+                dice_metric.reset() 
                 metric_values.append(metric)
-                # metric_values_tc.append(metric_tc)
-                # metric_values_wt.append(metric_wt)
-                # metric_values_et.append(metric_et)
                 
                 if metric > best_metric:
                     best_metric = metric
@@ -242,7 +229,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
                     torch.save({
                             'epoch': epoch,
                             'model_state_dict': model.state_dict(),
-                            'optimizer_state_dict': optimizer.state_dict()
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'scheduler_state_dict': scheduler.state_dict(),                       
                         }, os.path.join(results_dir, "best_metric_model.pth"))
                     print("saved new best metric model")
                 print(
@@ -278,7 +266,7 @@ def main(cfg):
     
     #join id and class
     for i in range(len(data_list)):
-        data_list[i]['img_stratify'] = data_list[i]['img_id'] + '_' + data_list[i]['img_class']
+        data_list[i]['img_stratify'] = data_list[i]['case_id'] + '_' + data_list[i]['case_class']
         
     #split data_list for cross validation - grouped stratify split based on type
     sgkf = StratifiedGroupKFold(n_splits=cfg['training']['nfolds'], shuffle=True, random_state=cfg['seed'])
@@ -305,7 +293,7 @@ def main(cfg):
                     ]
                 ),   
                 ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0), 
-                SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                SelectItemsd(keys=("img", "label","case_id", "case_class")),
                 ]
             )
         
@@ -316,7 +304,7 @@ def main(cfg):
                 EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
                 SplitLabelMined(keys="label"),
                 ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0),
-                SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                SelectItemsd(keys=("img", "label","case_id", "case_class")),
                 ]
              )
     elif cfg['preprocessing']['image_preprocess'] == 'Resize':
@@ -335,7 +323,7 @@ def main(cfg):
                     ]
                 ), 
                 ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0),
-                SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                SelectItemsd(keys=("img", "label","case_id", "case_class")),
                 ]
             )
         val_transforms = Compose(
@@ -346,7 +334,7 @@ def main(cfg):
                 SplitLabelMined(keys="label"),
                 Resized(keys=("img", "label"), spatial_size=cfg['preprocessing']['roi_size']),
                 ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0),
-                SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                SelectItemsd(keys=("img", "label","case_id", "case_class")),
                 ]
             )
     else:
@@ -354,11 +342,11 @@ def main(cfg):
 
     #train
     #define random groupname to identify all runs of the cross validation
-    for index_fold, (train_index, val_index) in enumerate(sgkf.split(data_list, [d['img_class'] for d in data_list], [d['img_stratify'] for d in data_list])):
+    for index_fold, (train_index, val_index) in enumerate(sgkf.split(data_list, [d['case_class'] for d in data_list], [d['img_stratify'] for d in data_list])):
         results_fold_dir = os.path.join(results_dir, f'fold_{index_fold}')
         print('Fold:', index_fold)
-        print('Number of training images by class:', Counter([data_list[i]['img_class'] for i in train_index])) #cuidado que como cada paciente tiene un numero diferente de imagenes, puede pasar que el train tenga menos imagenes del val
-        print('Number of validation images by class:', Counter([data_list[i]['img_class'] for i in val_index]))
+        print('Number of training images by class:', Counter([data_list[i]['case_class'] for i in train_index])) #cuidado que como cada paciente tiene un numero diferente de imagenes, puede pasar que el train tenga menos imagenes del val
+        print('Number of validation images by class:', Counter([data_list[i]['case_class'] for i in val_index]))
         
         train_dss = CacheDataset(np.array(data_list)[train_index], transform=train_transforms, cache_rate=cfg['training']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['training']['num_workers'])
         val_dss = CacheDataset(np.array(data_list)[val_index], transform=val_transforms, cache_rate = cfg['training']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['training']['num_workers'])

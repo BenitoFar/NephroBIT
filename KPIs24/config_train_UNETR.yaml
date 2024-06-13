@@ -6,6 +6,8 @@ datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/train
 device_number: 0
 seed: 44
 resume_training: False
+nfolds: 3
+fold: 0
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
@@ -16,7 +18,6 @@ preprocessing:
 training:
   epoch: 100
   val_interval: 1
-  nfolds: 5
   train_batch_size: 2
   val_batch_size: 1
   num_workers: 4

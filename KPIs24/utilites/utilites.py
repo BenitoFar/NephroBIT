@@ -92,7 +92,7 @@ def prepare_data(datadir):
     labels = sorted(glob(os.path.join(datadir, "**/*mask.jpg"), recursive = True))
     print('Number of images:', len(images))
     data_list = [
-        {"img": _image, "label": _label, 'img_class': os.path.dirname(_image).split('/')[-3], 'img_id': os.path.dirname(_image).split('/')[-2]}
+        {"img": _image, "label": _label, 'case_class': os.path.dirname(_image).split('/')[-3], 'case_id': os.path.dirname(_image).split('/')[-2]}
         for _image, _label in zip(images, labels)
     ]
     return data_list
@@ -133,7 +133,7 @@ def get_transforms(cfg, phase):
                             ]
                         ),   
                         ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True), 
-                        SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                        SelectItemsd(keys=("img", "label","case_id", "case_class")),
                         ]
                     )
                 return train_transforms
@@ -145,7 +145,7 @@ def get_transforms(cfg, phase):
                         EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
                         SplitLabelMined(keys="label"),
                         ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
-                        SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                        SelectItemsd(keys=("img", "label","case_id", "case_class")),
                         ]
                     )
                 return val_transforms
@@ -172,7 +172,7 @@ def get_transforms(cfg, phase):
                                 ]
                             ), 
                             ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
-                            SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                            SelectItemsd(keys=("img", "label","case_id", "case_class")),
                             ]
                         )
                 return train_transforms
@@ -185,7 +185,7 @@ def get_transforms(cfg, phase):
                             SplitLabelMined(keys="label"),
                             Resized(keys=("img", "label"), spatial_size=cfg['preprocessing']['roi_size']),
                             ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
-                            SelectItemsd(keys=("img", "label","img_id", "img_class")),
+                            SelectItemsd(keys=("img", "label","case_id", "case_class")),
                             ]
                         )
                 return val_transforms
@@ -216,7 +216,7 @@ def get_transforms(cfg, phase):
                         ComputeHoVerMaps(keys=["label"]),
                         #compute 
                         ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
-                        SelectItemsd(keys=("img", "label", "hover_label", "img_id", "img_class")),
+                        SelectItemsd(keys=("img", "label", "hover_label", "case_id", "case_class")),
                         ]
                     )
             return train_transforms
@@ -228,7 +228,7 @@ def get_transforms(cfg, phase):
                         EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
                         SplitLabelMined(keys="label"),
                         ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
-                        SelectItemsd(keys=("img", "label", "img_id", "img_class")),
+                        SelectItemsd(keys=("img", "label", "case_id", "case_class")),
                         ]
                     )
             return val_transforms

@@ -56,14 +56,13 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
     os.makedirs(results_dir, exist_ok=True)
     os.makedirs(results_images_dir, exist_ok=True)
     progress = open(results_dir + '/progress_train.txt', 'w')
-    #calculate lenght train_loaders[index_fold]
+    
     train_ds = train_loader.dataset
     val_ds = val_loader.dataset
     print(f"train_ds length: {len(train_ds)}, val_ds length: {len(val_ds)}")
     
     #define metrics
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
-    # dice_metric_batch = DiceMetric(include_background=True, reduction="mean_batch")
     
     post_trans = Compose([Activations(sigmoid=True), AsDiscrete(threshold=0.5)])
     
@@ -115,7 +114,6 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
     else:
         raise ValueError(f"Model {cfg['model']['name']} not implemented")
         
-    
     if cfg['wandb']['state']: wandb.watch(model, log="all")
 
     if cfg['training']['loss'] == 'DiceCELoss':
@@ -144,9 +142,6 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
     best_metric_epoch = -1
     epoch_loss_values = list()
     metric_values = list()
-    # metric_values_tc = list()
-    # metric_values_wt = list()
-    # metric_values_et = list()
     epoch_start_time = time.time()
     
     if cfg['resume_training']:
@@ -182,15 +177,12 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             optimizer.step()
             epoch_loss += loss.item()
             epoch_len = len(train_ds) // train_loader.batch_size
-            print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}")
-            print("train_loss", loss.item(), " - ", epoch_len * epoch + step, "batches processed")
+            # print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}")
+            # print("train_loss", loss.item(), " - ", epoch_len * epoch + step, "batches processed")
             
             # Update wandb dict
             if cfg['wandb']['state']:
                 wandb.log({"train/loss": loss.item()})
-                # wandb_dict.update({
-                #     : loss.item(),
-                # })
             progress.write(f'(epoch:{epoch+1} >> loss:{loss.item()}\n') 
             
         epoch_loss /= step
@@ -203,12 +195,11 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
 
         if cfg['wandb']['state']:
             # 🐝 log train_loss averaged over epoch to wandb
-            # wandb_dict.update({"train/loss_epoch": epoch_loss})
-            wandb.log({"train/loss_epoch": epoch_loss})
-            wandb.log({"epoch": epoch+1})
+            wandb.log({"train/loss_epoch": epoch_loss, "step": epoch +1})
+            # wandb.log({"epoch": epoch+1})
             # 🐝 log learning rate after each epoch to wandb
-            # wandb_dict.update({"learning_rate": scheduler.get_lr()[0]})
             wandb.log({"learning_rate": scheduler.get_lr()[0]})
+            
         progress.write(f'(epoch:{epoch+1} >> train/loss_epoch:{epoch_loss}\n') 
         progress.write(f'(epoch:{epoch+1} >> learning_rate:{scheduler.get_lr()[0]}\n')
         progress.write(f'(epoch:{epoch+1} >> time:{time.time() - epoch_start:.2f} seconds\n')
@@ -233,15 +224,10 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
                         show_image(val_images[0].cpu().numpy(), val_labels[0].cpu().numpy(), val_outputs[0].cpu().numpy(), os.path.join(results_images_dir,f'fold_{index_fold}_prediction_image_{idx_val}_epoch_{epoch}.png'))
                     # compute metric for current iteration
                     dice_metric(y_pred=val_outputs, y=val_labels)
-                    # dice_metric_batch(y_pred=val_outputs, y=val_labels)
                     
                 # aggregate the final mean dice result
                 metric = dice_metric.aggregate().item()
-                # metric_batch = dice_metric_batch.aggregate()
-                # metric_tc = metric_batch[0].item()
-                # metric_wt = metric_batch[1].item()
-                # metric_et = metric_batch[2].item()
-                
+            
                 # Update wandb dict
                 if cfg['wandb']['state']:
                     # wandb_dict.update({"val/dice_metric": dice_metric})
@@ -251,12 +237,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
                    
                 # reset the status for next validation round
                 dice_metric.reset()
-                # dice_metric_batch.reset()
                 
                 metric_values.append(metric)
-                # metric_values_tc.append(metric_tc)
-                # metric_values_wt.append(metric_wt)
-                # metric_values_et.append(metric_et)
                 
                 if metric > best_metric:
                     best_metric = metric
@@ -281,13 +263,34 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
         wandb.save('model_best.pth')
     progress.write(f'(train completed, best_metric DICE: {best_metric:.4f} at epoch: {best_metric_epoch}\n')
 
+    #load the best model and save all the validation prediction masks
+    checkpoint = torch.load(os.path.join(results_dir, "best_metric_model.pth"))
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.eval()
+    
+    #create a folder to save the validation images
+    os.makedirs(os.path.join(results_dir, 'val_images'), exist_ok=True)
+    
+    with torch.no_grad():
+        val_images = None
+        val_labels = None
+        val_outputs = None
+        
+        for idx_val, val_data in enumerate(val_loader):
+            val_images, val_labels = val_data["img"].to(device), val_data["label"].to(device)
+            sw_batch_size = 1
+            val_outputs = sliding_window_inference(val_images, cfg['preprocessing']['roi_size'], sw_batch_size, model)
+            val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
+            #save output label image
+            plt.figure()
+            plt.imshow(val_outputs[0].cpu().numpy().squeeze(), cmap='gray', interpolation="none")
+            plt.savefig(os.path.join(results_dir, 'val_images', f'{val_data["label"]}_fold_{index_fold}.png'))
+            plt.close() 
  
 def main(cfg):
     monai.config.print_config()
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
     cfg = load_config(cfg)
-    
-    # create_log_dir(cfg)
     
     set_determinism(seed=cfg['seed'])
     seed_everything(cfg['seed'])
@@ -295,61 +298,61 @@ def main(cfg):
     device = torch.device(f"cuda:{cfg['device_number']}" if torch.cuda.is_available() else "cpu")
     
     datadir = cfg['datadir']
-    results_dir = os.path.join(cfg['results_dir'], cfg['model']['name'], cfg['preprocessing']['image_preprocess'])
     
-    data_list = prepare_data(datadir)
+    #get validation list files
+    datadir_val = os.path.join(datadir, f'fold_{cfg['fold']}')
+    data_list_val = prepare_data(datadir_val)
+    #get train list files
     
-    #join id and class
-    for i in range(len(data_list)):
-        data_list[i]['img_stratify'] = data_list[i]['img_id'] + '_' + data_list[i]['img_class']
-        
-    #split data_list for cross validation - grouped stratify split based on type
-    sgkf = StratifiedGroupKFold(n_splits=cfg['training']['nfolds'], shuffle=True, random_state=cfg['seed'])
+    #all the other folds (considering the cfg['nfolds']) will be used for training
+    # for i in range(cfg['training']['nfolds']):
+    #     if i != cfg['fold']:
+    #         datadir_train = os.path.join(datadir, f'fold_{i}')
+    #         datalist_fold_train = prepare_data(datadir_train)
+    #         data_list_train = datalist_fold_train + datalist_fold_train if i != 0 else datalist_fold_train
+    
+    data_list_train = [prepare_data(os.path.join(datadir, f'fold_{i}')) for i in range(cfg['training']['nfolds']) if i != cfg['fold']]
     
     train_transforms = get_transforms(cfg, 'train')
     val_transforms = get_transforms(cfg, 'val')
 
-    #train
-    #define random groupname to identify all runs of the cross validation
-    for index_fold, (train_index, val_index) in enumerate(sgkf.split(data_list, [d['img_class'] for d in data_list], [d['img_stratify'] for d in data_list])):
-        results_fold_dir = os.path.join(results_dir, f'fold_{index_fold}')
-        print('Fold:', index_fold)
-        print('Number of training images by class:', Counter([data_list[i]['img_class'] for i in train_index])) #cuidado que como cada paciente tiene un numero diferente de imagenes, puede pasar que el train tenga menos imagenes del val
-        print('Number of validation images by class:', Counter([data_list[i]['img_class'] for i in val_index]))
+    results_fold_dir = os.path.join(cfg['results_dir'], cfg['model']['name'], cfg['preprocessing']['image_preprocess'], f'fold_{cfg['fold']}')
+    print('Fold:', cfg['fold'])
+    print('Number of training images by class:', Counter(data_list_train['case_class']))
+    print('Number of validation images by class:', Counter(data_list_val['case_class']))
+    
+    train_dss = CacheDataset(np.array(data_list_train), transform=train_transforms, cache_rate=cfg['training']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['training']['num_workers'])
+    val_dss = CacheDataset(np.array(data_list_val), transform=val_transforms, cache_rate = cfg['training']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['training']['num_workers'])
+    
+    train_loader = DataLoader(train_dss, batch_size=cfg['training']['train_batch_size'], shuffle=True, num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available()) 
+    val_loader = DataLoader(val_dss, batch_size=cfg['training']['val_batch_size'], num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
+    
+    # use batch_size=2 to load images and use RandCropByPosNegLabeld to generate 2 x 4 images for network training
+    check_loader = train_loader
+    check_data = monai.utils.misc.first(check_loader)
+    print(check_data["img"].shape, check_data["label"].shape)
+    
+    os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
+    for i in range(len(check_data["img"])):
+        check_image, check_label = (check_data["img"][i], check_data["label"][i])
+        print(f"image shape: {check_image.shape}, label shape: {check_label.shape}")
+        show_image(check_image, check_label, None, os.path.join(results_fold_dir, f'train_images_examples', f'train_sample_{i}.png'))   
         
-        train_dss = CacheDataset(np.array(data_list)[train_index], transform=train_transforms, cache_rate=cfg['training']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['training']['num_workers'])
-        val_dss = CacheDataset(np.array(data_list)[val_index], transform=val_transforms, cache_rate = cfg['training']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['training']['num_workers'])
+    if cfg['wandb']['state']:
+        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-fold{cfg['fold']:02}"
+        wandb.init(project=cfg['wandb']['project'], 
+                name=run_name, 
+                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_5foldcv_{cfg['preprocessing']['image_preprocess']}",
+                entity = cfg['wandb']['entity'],
+                save_code=True, 
+                reinit=cfg['wandb']['reinit'], 
+                resume=cfg['wandb']['resume'],
+                config = cfg,
+                    )
+    
+    train(cfg, cfg['fold'], train_loader, val_loader, device, results_fold_dir)
         
-        train_loader = DataLoader(train_dss, batch_size=cfg['training']['train_batch_size'], shuffle=True, num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available()) 
-        val_loader = DataLoader(val_dss, batch_size=cfg['training']['val_batch_size'], num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
-        
-        # use batch_size=2 to load images and use RandCropByPosNegLabeld to generate 2 x 4 images for network training
-        check_loader = train_loader
-        check_data = monai.utils.misc.first(check_loader)
-        print(check_data["img"].shape, check_data["label"].shape)
-        
-        os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
-        for i in range(len(check_data["img"])):
-            check_image, check_label = (check_data["img"][i], check_data["label"][i])
-            print(f"image shape: {check_image.shape}, label shape: {check_label.shape}")
-            show_image(check_image, check_label, None, os.path.join(results_fold_dir, f'train_images_examples', f'train_sample_{i}.png'))
-            
-            
-        if cfg['wandb']['state']:
-            run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-fold{index_fold:02}"
-            wandb.init(project=cfg['wandb']['project'], 
-                    name=run_name, 
-                    group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_5foldcv_{cfg['preprocessing']['image_preprocess']}",
-                    entity = cfg['wandb']['entity'],
-                    save_code=True, 
-                    reinit=cfg['wandb']['reinit'], 
-                    resume=cfg['wandb']['resume'],
-                    config = cfg,
-                        )
-        
-        train(cfg, index_fold, train_loader, val_loader, device, results_fold_dir)
-        
-        if cfg['wandb']['state']: wandb.finish()
+    if cfg['wandb']['state']: wandb.finish()
         
 if __name__ == "__main__":
     # cfg = "/home/benito/script/NephroBIT/KPIs24/config_train_swinUNETR.yaml"
