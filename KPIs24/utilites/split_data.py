@@ -9,8 +9,7 @@ import numpy as np
 def split_files_for_cross_validation(cfg):
     seed_everything(cfg['seed'])
     
-    datadir = cfg['datadir']
-    data_list = prepare_data(datadir)
+    data_list = prepare_data('/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/')
 
     #define dir where to copy data
     copydata_dir = '/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/'
@@ -34,14 +33,17 @@ def split_files_for_cross_validation(cfg):
             #get class id
             class_id = data_list[i]['case_class']
             #create a folder for the case id
-            case_dir = os.path.join(fold_dir, class_id, case_id, )
-            os.makedirs(case_dir, exist_ok=True)
-            shutil.copy(data_list[i]['img'], case_dir)
-            print('copying', data_list[i]['img'], 'to', case_dir)
+            case_dir_img = os.path.join(fold_dir, class_id, case_id, 'img')
+            # os.makedirs(case_dir_img, exist_ok=True)
+            # shutil.copy(data_list[i]['img'], case_dir_img)
+            case_dir_mask = os.path.join(fold_dir, class_id, case_id, 'mask')
+            # os.makedirs(case_dir_mask, exist_ok=True)
+            # shutil.copy(data_list[i]['mask'], case_dir_mask)
+            print('copying', data_list[i]['img'], 'to', case_dir_img, 'and', data_list[i]['mask'], 'to', case_dir_mask)
 
         #save the fold data to a json file
         fold_data = {
-            'data': [data_list[i] for i in val_index],
+            'cases': [data_list[i] for i in val_index],
             'class': list(np.unique([data_list[i]['case_class'] for i in val_index])),
             'class_counts': {class_id: len([data_list[i]['case_class'] for i in val_index if data_list[i]['case_class'] == class_id]) for class_id in np.unique([data_list[i]['case_class'] for i in val_index])},
             'id_per_class_counts': {class_id: len(set([data_list[i]['case_id'] for i in val_index if data_list[i]['case_class'] == class_id])) for class_id in np.unique([data_list[i]['case_class'] for i in val_index])},
@@ -71,4 +73,5 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     # cfg = args.config
     cfg = '/home/benito/script/NephroBIT/KPIs24/config_train_swinUNETR.yaml'
+
     main(cfg)

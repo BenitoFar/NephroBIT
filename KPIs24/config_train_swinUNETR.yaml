@@ -1,13 +1,13 @@
 #Configuration for training
 # File paths
 results_dir: "/home/benito/script/KPIs24/results"
-datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/train/"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/"
 
 device_number: 0
 seed: 44
 resume_training: False
 nfolds: 3
-fold: 0
+val_fold: 0
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 

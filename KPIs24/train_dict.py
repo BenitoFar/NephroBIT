@@ -300,24 +300,24 @@ def main(cfg):
     datadir = cfg['datadir']
     
     #get validation list files
-    datadir_val = os.path.join(datadir, f'fold_{cfg['fold']}')
+    datadir_val = os.path.join(datadir, f"fold_{cfg['val_fold']}")
     data_list_val = prepare_data(datadir_val)
     #get train list files
     
     #all the other folds (considering the cfg['nfolds']) will be used for training
     # for i in range(cfg['training']['nfolds']):
-    #     if i != cfg['fold']:
+    #     if i != cfg['val_fold']:
     #         datadir_train = os.path.join(datadir, f'fold_{i}')
     #         datalist_fold_train = prepare_data(datadir_train)
     #         data_list_train = datalist_fold_train + datalist_fold_train if i != 0 else datalist_fold_train
     
-    data_list_train = [prepare_data(os.path.join(datadir, f'fold_{i}')) for i in range(cfg['training']['nfolds']) if i != cfg['fold']]
+    data_list_train = [prepare_data(os.path.join(datadir, f'fold_{i}')) for i in range(cfg['training']['nfolds']) if i != cfg['val_fold']]
     
     train_transforms = get_transforms(cfg, 'train')
     val_transforms = get_transforms(cfg, 'val')
 
-    results_fold_dir = os.path.join(cfg['results_dir'], cfg['model']['name'], cfg['preprocessing']['image_preprocess'], f'fold_{cfg['fold']}')
-    print('Fold:', cfg['fold'])
+    results_fold_dir = os.path.join(cfg['results_dir'], cfg['model']['name'], cfg['preprocessing']['image_preprocess'], f"fold_{cfg['val_fold']}")
+    print('Fold:', cfg['val_fold'])
     print('Number of training images by class:', Counter(data_list_train['case_class']))
     print('Number of validation images by class:', Counter(data_list_val['case_class']))
     
@@ -330,19 +330,19 @@ def main(cfg):
     # use batch_size=2 to load images and use RandCropByPosNegLabeld to generate 2 x 4 images for network training
     check_loader = train_loader
     check_data = monai.utils.misc.first(check_loader)
-    print(check_data["img"].shape, check_data["label"].shape)
+    print(check_data["img"].shape, check_data["mask"].shape)
     
     os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
     for i in range(len(check_data["img"])):
-        check_image, check_label = (check_data["img"][i], check_data["label"][i])
+        check_image, check_label = (check_data["img"][i], check_data["mask"][i])
         print(f"image shape: {check_image.shape}, label shape: {check_label.shape}")
         show_image(check_image, check_label, None, os.path.join(results_fold_dir, f'train_images_examples', f'train_sample_{i}.png'))   
         
     if cfg['wandb']['state']:
-        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-fold{cfg['fold']:02}"
+        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-fold{cfg['val_fold']:02}"
         wandb.init(project=cfg['wandb']['project'], 
                 name=run_name, 
-                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_5foldcv_{cfg['preprocessing']['image_preprocess']}",
+                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
                 entity = cfg['wandb']['entity'],
                 save_code=True, 
                 reinit=cfg['wandb']['reinit'], 
@@ -350,7 +350,7 @@ def main(cfg):
                 config = cfg,
                     )
     
-    train(cfg, cfg['fold'], train_loader, val_loader, device, results_fold_dir)
+    train(cfg, cfg['val_fold'], train_loader, val_loader, device, results_fold_dir)
         
     if cfg['wandb']['state']: wandb.finish()
         
