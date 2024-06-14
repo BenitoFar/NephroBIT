@@ -38,8 +38,8 @@ def split_files_for_cross_validation(cfg):
             shutil.copy(data_list[i]['img'], case_dir_img)
             case_dir_mask = os.path.join(fold_dir, class_id, case_id, 'mask')
             os.makedirs(case_dir_mask, exist_ok=True)
-            shutil.copy(data_list[i]['mask'], case_dir_mask)
-            print('copying', data_list[i]['img'], 'to', case_dir_img, 'and', data_list[i]['mask'], 'to', case_dir_mask)
+            shutil.copy(data_list[i]['label'], case_dir_mask)
+            print('copying', data_list[i]['img'], 'to', case_dir_img, 'and', data_list[i]['label'], 'to', case_dir_mask)
 
         #save the fold data to a json file
         fold_data = {

@@ -179,7 +179,7 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
         print(f"epoch {epoch + 1} average train loss: {epoch_loss:.4f} - learning rate: {scheduler.get_lr()[0]:.5f} - time: {time.time() - epoch_start:.2f} seconds")
         if cfg['wandb']['state']:
             # 🐝 log train_loss averaged over epoch to wandb
-            wandb.log({"train/loss_epoch": epoch_loss, "step": epoch+1})
+            wandb.log({"train/loss_epoch": epoch_loss, "epoch": epoch+1})
             wandb.log({"epoch": epoch+1})
             # 🐝 log learning rate after each epoch to wandb
             wandb.log({"learning_rate": scheduler.get_lr()[0]})
@@ -370,7 +370,7 @@ def main(cfg):
             run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-fold{index_fold:02}"
             wandb.init(project=cfg['wandb']['project'], 
                     name=run_name, 
-                    group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_5foldcv_{cfg['preprocessing']['image_preprocess']}",
+                    group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
                     entity = cfg['wandb']['entity'],
                     save_code=True, 
                     reinit=cfg['wandb']['reinit'], 

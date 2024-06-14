@@ -16,7 +16,7 @@ preprocessing:
 
 # Training configuration
 training:
-  epoch: 100
+  epoch: 1
   val_interval: 1
   train_batch_size: 4
   val_batch_size: 1
@@ -65,7 +65,7 @@ model:
 
 # Wandb configuration
 wandb:
-  state: True
+  state: False
   project: 'nefrobit'
   entity: 'nefrobit'
   reinit: true

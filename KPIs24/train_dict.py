@@ -42,13 +42,12 @@ import matplotlib.pyplot as plt
 from monai.utils import set_determinism
 import wandb 
 import random
-from utilites import seed_everything, prepare_data, load_config, show_image, get_transforms
+from utilites import seed_everything, prepare_data, load_config, save_jpg_mask, show_image, get_transforms, get_model
 from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
 torch.autograd.set_detect_anomaly(True)
 
-def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
-    
-    
+def train(cfg, train_loader, val_loader, results_dir):
+    device = torch.device(f"cuda:{cfg['device_number']}" if torch.cuda.is_available() else "cpu")
     set_determinism(seed=cfg['seed'])
     seed_everything(cfg['seed'])
     
@@ -67,52 +66,7 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
     post_trans = Compose([Activations(sigmoid=True), AsDiscrete(threshold=0.5)])
     
     # create UNet, DiceLoss and Adam optimizer
-    if cfg['model']['name'] == "Unet":
-        model = monai.networks.nets.UNet(
-            spatial_dims=cfg['model']['params']['spatial_dims'],
-            in_channels=cfg['model']['params']['in_channels'],
-            out_channels=cfg['model']['params']['out_channels'],
-            channels=cfg['model']['params']['f_maps_channels'],
-            strides=cfg['model']['params']['strides'],
-            num_res_units=cfg['model']['params']['num_res_units'],
-        ).to(device)
-    elif cfg['model']['name'] == "UNETR":
-        model = monai.networks.nets.UNETR(
-            in_channels=cfg['model']['params']['in_channels'],
-            out_channels=cfg['model']['params']['out_channels'],
-            img_size=cfg['preprocessing']['roi_size'],
-            spatial_dims = cfg['model']['params']['spatial_dims'],
-            feature_size=cfg['model']['params']['feature_size'],
-            hidden_size=cfg['model']['params']['hidden_size'],
-            mlp_dim=cfg['model']['params']['mlp_dim'],
-            num_heads=cfg['model']['params']['num_heads'],
-        ).to(device)
-    elif cfg['model']['name'] == "SwinUNETR":
-        model = monai.networks.nets.SwinUNETR(
-            img_size=cfg['preprocessing']['roi_size'],
-            in_channels=cfg['model']['params']['in_channels'],
-            out_channels=cfg['model']['params']['out_channels'],
-            spatial_dims = cfg['model']['params']['spatial_dims'],
-            depths = cfg['model']['params']['depths'],
-            num_heads = cfg['model']['params']['num_heads'],
-            feature_size = cfg['model']['params']['feature_size'],
-            use_v2 = cfg['model']['params']['use_v2'],
-        ).to(device)
-    elif cfg['model']['name'] == "HoVerSwinUNETR":
-        model = monai.networks.nets.HoVerSwinUNETR(
-            img_size=cfg['preprocessing']['roi_size'],
-            in_channels=cfg['model']['params']['in_channels'],
-            out_channels=cfg['model']['params']['out_channels'],
-            spatial_dims = cfg['model']['params']['spatial_dims'],
-            depths = cfg['model']['params']['depths'],
-            num_heads = cfg['model']['params']['num_heads'],
-            feature_size = cfg['model']['params']['feature_size'],
-            hovermaps = cfg['model']['params']['hovermaps'],
-            freeze_encoder = cfg['model']['params']['freeze_encoder'],
-            freeze_decoder_bin = cfg['model']['params']['freeze_decoder_bin'],
-        ).to(device)
-    else:
-        raise ValueError(f"Model {cfg['model']['name']} not implemented")
+    model = get_model(cfg, pretrained_path = None)
         
     if cfg['wandb']['state']: wandb.watch(model, log="all")
 
@@ -126,13 +80,14 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
     optimizer = torch.optim.Adam(model.parameters(), cfg['model']['optimizer']['params']['learning_rate'])
     
     if cfg['model']['scheduler']['name'] == "WarmupCosineSchedule":
-        warmup_steps = int(cfg['model']['scheduler']['params']['warmup_epochs'] * len(train_ds) / train_loader.batch_size)
-        t_total = int(cfg['training']['epoch'] * len(train_ds) / train_loader.batch_size)
+        warmup_steps = int(cfg['model']['scheduler']['params']['warmup_epochs'] * len(train_ds) / cfg['training']['train_batch_size'])
+        t_total = int(cfg['training']['epoch'] * len(train_ds) / cfg['training']['train_batch_size'])
         scheduler = WarmupCosineSchedule(optimizer, warmup_steps=warmup_steps, t_total=t_total, cycles = cfg['model']['scheduler']['params']['cycles'], end_lr=1e-9)
     elif cfg['model']['scheduler']['name'] == "CosineAnnealingLR":
         scheduler = CosineAnnealingLR(optimizer, T_max=cfg['model']['scheduler']['params']['T_max'], eta_min=1e-9)
     else:
         raise ValueError(f"Scheduler {cfg['model']['scheduler']['name']} not implemented")
+    
     
     #get random indexes for validation data to show predicted images
     val_indexes = random.sample(range(len(val_ds)), 20)
@@ -147,6 +102,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
     if cfg['resume_training']:
             checkpoint = torch.load(os.path.join(results_dir, "best_metric_model.pth"))
             model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            scheduler.load_state_dict(checkpoint(['scheduler_state_dict']))
             first_epoch = checkpoint['epoch']
             print(f"Resuming training from epoch {first_epoch}")
     else:
@@ -154,7 +111,6 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
         
     for epoch in range(first_epoch, cfg['training']['epoch']):
         epoch_start = time.time()
-        if cfg['wandb']['state']: wandb_dict = {}  # wandb to log
         
         print("-" * 10)
         print(f"epoch {epoch + 1}/{cfg['training']['epoch']}")
@@ -175,14 +131,17 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             loss = loss_function(outputs, labels)
             loss.backward()
             optimizer.step()
+            # step scheduler after each epoch (cosine decay)
+            scheduler.step()
             epoch_loss += loss.item()
-            epoch_len = len(train_ds) // train_loader.batch_size
+            epoch_len = len(train_ds) // cfg['training']['train_batch_size']
             # print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}")
             # print("train_loss", loss.item(), " - ", epoch_len * epoch + step, "batches processed")
             
             # Update wandb dict
             if cfg['wandb']['state']:
                 wandb.log({"train/loss": loss.item()})
+                wandb.log({"learning_rate": scheduler.get_lr()[0]})
             progress.write(f'(epoch:{epoch+1} >> loss:{loss.item()}\n') 
             
         epoch_loss /= step
@@ -190,16 +149,14 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
         
         print(f"epoch {epoch + 1} average train loss: {epoch_loss:.4f} - learning rate: {scheduler.get_lr()[0]:.5f} - time: {time.time() - epoch_start:.2f} seconds")
 
-        # step scheduler after each epoch (cosine decay)
-        scheduler.step()
-
+        
         if cfg['wandb']['state']:
             # 🐝 log train_loss averaged over epoch to wandb
-            wandb.log({"train/loss_epoch": epoch_loss, "step": epoch +1})
-            # wandb.log({"epoch": epoch+1})
+            wandb.log({"train/loss_epoch": epoch_loss, "epoch": epoch+1})
+            wandb.log({"epoch": epoch+1})
             # 🐝 log learning rate after each epoch to wandb
             wandb.log({"learning_rate": scheduler.get_lr()[0]})
-            
+             
         progress.write(f'(epoch:{epoch+1} >> train/loss_epoch:{epoch_loss}\n') 
         progress.write(f'(epoch:{epoch+1} >> learning_rate:{scheduler.get_lr()[0]}\n')
         progress.write(f'(epoch:{epoch+1} >> time:{time.time() - epoch_start:.2f} seconds\n')
@@ -216,12 +173,9 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
                     sw_batch_size = 1
                     val_outputs = sliding_window_inference(val_images, cfg['preprocessing']['roi_size'], sw_batch_size, model)
                     #save output label image
-                    # plt.figure()
-                    # plt.imshow(torch.argmax(val_outputs, dim=0).cpu().numpy().squeeze(), cmap='gray')
-                    # plt.savefig(os.path.join(results_images_dir,f'fold_{index_fold}_prediction_image_{idx_val}_{epoch}_{step}.png'))
                     val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
                     if (idx_val in val_indexes) and (epoch) % 4 == 0:
-                        show_image(val_images[0].cpu().numpy(), val_labels[0].cpu().numpy(), val_outputs[0].cpu().numpy(), os.path.join(results_images_dir,f'fold_{index_fold}_prediction_image_{idx_val}_epoch_{epoch}.png'))
+                        show_image(val_images[0].cpu().numpy(), val_labels[0].cpu().numpy(), val_outputs[0].cpu().numpy(), os.path.join(results_images_dir,f'prediction_image_{idx_val}_epoch_{epoch}.png'))
                     # compute metric for current iteration
                     dice_metric(y_pred=val_outputs, y=val_labels)
                     
@@ -230,7 +184,6 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             
                 # Update wandb dict
                 if cfg['wandb']['state']:
-                    # wandb_dict.update({"val/dice_metric": dice_metric})
                     wandb.log({"val/dice_metric": metric})
                     #save
                 progress.write(f'(epoch:{epoch+1} >> val/dice_metric:{metric}\n')
@@ -246,7 +199,8 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
                     torch.save({
                             'epoch': epoch,
                             'model_state_dict': model.state_dict(),
-                            'optimizer_state_dict': optimizer.state_dict()
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'scheduler_state_dict': scheduler.state_dict(),                       
                         }, os.path.join(results_dir, "best_metric_model.pth"))
                     print("saved new best metric model")
                 print(
@@ -257,8 +211,7 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
                 print(f"time consuming of epoch {epoch + 1} is: {(time.time() - epoch_start):.4f}")
                                      
     print(f"train completed, best_metric DICE: {best_metric:.4f} at epoch: {best_metric_epoch} - time consuming: {(time.time() - epoch_start_time):.4f}")
-    if cfg['wandb']['state']: 
-        wandb_dict.update({"best_dice_metric": best_metric, "best_metric_epoch": best_metric_epoch})
+    if cfg['wandb']['state']:
         wandb.log({"best_dice_metric": best_metric, "best_metric_epoch": best_metric_epoch})
         wandb.save('model_best.pth')
     progress.write(f'(train completed, best_metric DICE: {best_metric:.4f} at epoch: {best_metric_epoch}\n')
@@ -269,7 +222,7 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
     model.eval()
     
     #create a folder to save the validation images
-    os.makedirs(os.path.join(results_dir, 'val_images'), exist_ok=True)
+    os.makedirs(os.path.join(results_dir, 'predicted_masks'), exist_ok=True)
     
     with torch.no_grad():
         val_images = None
@@ -282,11 +235,9 @@ def train(cfg, index_fold, train_loader, val_loader, device, results_dir):
             val_outputs = sliding_window_inference(val_images, cfg['preprocessing']['roi_size'], sw_batch_size, model)
             val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
             #save output label image
-            plt.figure()
-            plt.imshow(val_outputs[0].cpu().numpy().squeeze(), cmap='gray', interpolation="none")
-            plt.savefig(os.path.join(results_dir, 'val_images', f'{val_data["label"]}_fold_{index_fold}.png'))
-            plt.close() 
- 
+            save_jpg_mask(val_outputs, os.path.join(results_dir, 'predicted_masks', f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.jpg'))
+
+
 def main(cfg):
     monai.config.print_config()
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -294,32 +245,27 @@ def main(cfg):
     
     set_determinism(seed=cfg['seed'])
     seed_everything(cfg['seed'])
-     
-    device = torch.device(f"cuda:{cfg['device_number']}" if torch.cuda.is_available() else "cpu")
     
     datadir = cfg['datadir']
     
     #get validation list files
     datadir_val = os.path.join(datadir, f"fold_{cfg['val_fold']}")
     data_list_val = prepare_data(datadir_val)
+    
     #get train list files
-    
-    #all the other folds (considering the cfg['nfolds']) will be used for training
-    # for i in range(cfg['training']['nfolds']):
-    #     if i != cfg['val_fold']:
-    #         datadir_train = os.path.join(datadir, f'fold_{i}')
-    #         datalist_fold_train = prepare_data(datadir_train)
-    #         data_list_train = datalist_fold_train + datalist_fold_train if i != 0 else datalist_fold_train
-    
-    data_list_train = [prepare_data(os.path.join(datadir, f'fold_{i}')) for i in range(cfg['training']['nfolds']) if i != cfg['val_fold']]
-    
+    data_list_train = []
+    for i in range(cfg['nfolds']):
+        if i != cfg['val_fold']:
+            datadir_train = os.path.join(datadir, f'fold_{i}')
+            datalist_fold_train = prepare_data(datadir_train)
+            data_list_train.extend(datalist_fold_train)
+    print('Number of training images:', len(data_list_train), 'Number of validation images:', len(data_list_val))
     train_transforms = get_transforms(cfg, 'train')
     val_transforms = get_transforms(cfg, 'val')
-
-    results_fold_dir = os.path.join(cfg['results_dir'], cfg['model']['name'], cfg['preprocessing']['image_preprocess'], f"fold_{cfg['val_fold']}")
+    
     print('Fold:', cfg['val_fold'])
-    print('Number of training images by class:', Counter(data_list_train['case_class']))
-    print('Number of validation images by class:', Counter(data_list_val['case_class']))
+    print('Number of training images by class:', Counter([data_list_train[i]['case_class'] for i in range(len(data_list_train))]))
+    print('Number of validation images by class:', Counter([data_list_val[i]['case_class'] for i in range(len(data_list_val))]))
     
     train_dss = CacheDataset(np.array(data_list_train), transform=train_transforms, cache_rate=cfg['training']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['training']['num_workers'])
     val_dss = CacheDataset(np.array(data_list_val), transform=val_transforms, cache_rate = cfg['training']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['training']['num_workers'])
@@ -327,14 +273,16 @@ def main(cfg):
     train_loader = DataLoader(train_dss, batch_size=cfg['training']['train_batch_size'], shuffle=True, num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available()) 
     val_loader = DataLoader(val_dss, batch_size=cfg['training']['val_batch_size'], num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
     
-    # use batch_size=2 to load images and use RandCropByPosNegLabeld to generate 2 x 4 images for network training
+    # check same train images
+    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'],  f"fold_{cfg['val_fold']}")
+    os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
+    
     check_loader = train_loader
     check_data = monai.utils.misc.first(check_loader)
-    print(check_data["img"].shape, check_data["mask"].shape)
+    print(check_data["img"].shape, check_data["label"].shape)
     
-    os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
     for i in range(len(check_data["img"])):
-        check_image, check_label = (check_data["img"][i], check_data["mask"][i])
+        check_image, check_label = (check_data["img"][i], check_data["label"][i])
         print(f"image shape: {check_image.shape}, label shape: {check_label.shape}")
         show_image(check_image, check_label, None, os.path.join(results_fold_dir, f'train_images_examples', f'train_sample_{i}.png'))   
         
@@ -350,7 +298,7 @@ def main(cfg):
                 config = cfg,
                     )
     
-    train(cfg, cfg['val_fold'], train_loader, val_loader, device, results_fold_dir)
+    train(cfg, train_loader, val_loader, results_fold_dir)
         
     if cfg['wandb']['state']: wandb.finish()
         

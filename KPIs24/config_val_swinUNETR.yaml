@@ -1,11 +1,14 @@
 #Configuration for training
 # File paths
 results_dir: "/home/benito/script/KPIs24/results"
-datadir: "/data/KPIs24/KPIs24 Validation Data/Task1_patch_level/data/"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/"
+modeldir: "/home/benito/script/KPIs24/results/3foldCV/SwinUNETR/CropPosNeg"
 
 device_number: 0
 seed: 44
 ensemble: False
+nfolds: 3
+fold: 0
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
@@ -13,28 +16,25 @@ preprocessing:
   num_samples_per_image: 4
 
 # Training configuration
-training:
+validation:
   val_interval: 1
-  nfolds: 5
-  train_batch_size: 18
   val_batch_size: 1
   num_workers: 4
   cache_rate: 0.5
-  learning_rate: 0.001
-
 
 # Model configuration
 model:
-  name: 'Unet'
+  name: 'SwinUNETR'
   params: {
     'in_channels': 3,
     'spatial_dims': 2,
     'out_channels': 1,
-    'f_maps_channels': [32, 64, 128, 256, 512],
-    'strides': [2, 2, 2, 2],
-    'num_res_units': 2,
-  }
+    'feature_size': 24,
+    'num_heads': [3, 6, 12, 24],
+    'depths': [2, 2, 2, 2],
+    'use_v2': False
 
+  }
 
 # Wandb configuration
 wandb:
