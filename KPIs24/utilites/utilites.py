@@ -301,7 +301,7 @@ def get_model(cfg, pretrained_path = None):
         raise ValueError(f"Model {cfg['model']['name']} not implemented")
     
     if pretrained_path is not None:
-        model.load_state_dict(torch.load(pretrained_path))
+        model.load_state_dict(torch.load(pretrained_path)['model_state_dict'])
         print(f"Model loaded from {pretrained_path}")
     
     model.eval()

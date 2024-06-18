@@ -4,11 +4,11 @@ results_dir: "/home/benito/script/KPIs24/results"
 datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/"
 modeldir: "/home/benito/script/KPIs24/results/3foldCV/SwinUNETR/CropPosNeg"
 
-device_number: 0
+device_number: 1
 seed: 44
 ensemble: False
 nfolds: 3
-fold: 0
+val_fold: 0
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 

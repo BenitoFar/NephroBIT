@@ -100,7 +100,7 @@ def train(cfg, train_loader, val_loader, results_dir):
     epoch_start_time = time.time()
     
     if cfg['resume_training']:
-            checkpoint = torch.load(os.path.join(results_dir, "best_metric_model.pth"))
+            checkpoint = torch.load(os.path.join(results_dir, "last_epoch_model.pth"))
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             scheduler.load_state_dict(checkpoint(['scheduler_state_dict']))
@@ -149,6 +149,13 @@ def train(cfg, train_loader, val_loader, results_dir):
         
         print(f"epoch {epoch + 1} average train loss: {epoch_loss:.4f} - learning rate: {scheduler.get_lr()[0]:.5f} - time: {time.time() - epoch_start:.2f} seconds")
 
+        #save model after each epoch 
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+        }, os.path.join(results_dir, "last_epoch_model.pth"))
         
         if cfg['wandb']['state']:
             # 🐝 log train_loss averaged over epoch to wandb

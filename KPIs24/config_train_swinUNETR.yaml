@@ -7,7 +7,7 @@ device_number: 0
 seed: 44
 resume_training: False
 nfolds: 3
-val_fold: 0
+val_fold: 1
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
