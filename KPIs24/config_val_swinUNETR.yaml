@@ -9,6 +9,8 @@ seed: 44
 ensemble: False
 nfolds: 3
 val_fold: 0
+inference_type: 'validation'
+save_masks: True
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
@@ -20,7 +22,13 @@ validation:
   val_interval: 1
   val_batch_size: 1
   num_workers: 4
-  cache_rate: 0.5
+  cache_rate: 0.1
+  sliding_window_inference: {
+      'mode': 'constant',
+    }
+  timetestaugmentation: {
+      'status': False,
+    }
 
 # Model configuration
 model:

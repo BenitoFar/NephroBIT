@@ -28,13 +28,13 @@ def main(cfg):
     seed_everything(cfg['seed'])
     
     #get validation list files
-    datadir_val = os.path.join(cfg['datadir'], f"fold_{cfg['val_fold']}")
+    datadir_val = cfg['datadir']
     data_list_val = prepare_data(datadir_val)
     
-    val_transforms = get_transforms(cfg, 'val')
+    val_transforms = get_transforms(cfg, 'test')
     
-    print('Fold:', cfg['val_fold'])
-    print('Number of validation images by class:', Counter([data_list_val[i]['case_class'] for i in range(len(data_list_val))]))
+    
+    print('Number of test images by class:', Counter([data_list_val[i]['case_class'] for i in range(len(data_list_val))]))
     val_dss = CacheDataset(np.array(data_list_val), transform=val_transforms, cache_rate = cfg['validation']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['validation']['num_workers'])
     val_loader = DataLoader(val_dss, batch_size=cfg['validation']['val_batch_size'], num_workers=cfg['validation']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
     
@@ -44,10 +44,11 @@ def main(cfg):
                                cfg['inference_type'], 
                                cfg['validation']['sliding_window_inference']['mode'] + '_windowing',
                                ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"))
+    
     os.makedirs(results_dir, exist_ok=True)
     
     # if cfg['wandb']['state']:
-    #     run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-fold{cfg['val_fold']:02}-inference-{cfg['inference_type']}"
+    #     run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-fold{cfg['val_fold']:02}-inference-{cfg['inference_type']}_{cfg['validation']['sliding_window_inference']['mode']}_windowing"
     #     wandb.init(project=cfg['wandb']['project'], 
     #             name=run_name, 
     #             group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
@@ -58,10 +59,10 @@ def main(cfg):
     #             config = cfg,
     #                 )
     
-    evaluate_func(cfg, val_loader, results_dir, save_masks=cfg['save_masks'])
+    evaluate_func(cfg, val_loader, results_dir, save_masks=False)
     
     # if cfg['wandb']['state']: wandb.finish()
     
 if __name__ == "__main__":
-    cfg = "/home/benito/script/NephroBIT/KPIs24/config_val_swinUNETR.yaml"
+    cfg = "/home/benito/script/NephroBIT/KPIs24/config_test_swinUNETR.yaml"
     main(cfg)

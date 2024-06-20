@@ -1,13 +1,15 @@
 #Configuration for training
 # File paths
 results_dir: "/home/benito/script/KPIs24/results"
-datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Validation_Data/Task1_patch_level/validation/"
+modeldir: "/home/benito/script/KPIs24/results/3foldCV/SwinUNETR/CropPosNeg"
 
-device_number: 0
+device_number: 1
 seed: 44
-resume_training: True
+ensemble: False
 nfolds: 3
-val_fold: 1
+val_fold: 0
+inference_type: 'test'
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
@@ -15,17 +17,16 @@ preprocessing:
   num_samples_per_image: 4
 
 # Training configuration
-training:
-  epoch: 100
+validation:
   val_interval: 1
-  train_batch_size: 4
   val_batch_size: 1
   num_workers: 4
   cache_rate: 0.5
-  loss: DiceCELoss
-  loss_params: {
-    'lambda_dice': 1.0,
-    'lambda_ce': 1.0
+  sliding_window_inference: {
+    'mode': 'gaussian'
+  }
+  timetestaugmentation: {
+    'status': True,
   }
 
 # Model configuration
@@ -41,33 +42,10 @@ model:
     'use_v2': False
 
   }
-  optimizer: {
-    'name': 'Adam',
-    'params': {
-      'learning_rate': 0.0001,
-      'weight_decay': 0.0001
-    }
-  }
-
-  # scheduler: {
-  #   'name': 'CosineAnnealingLR',
-  #   'params': {
-  #     'T_max': 10
-  #   }
-  # }
-  
-  scheduler: {
-    'name': 'WarmupCosineSchedule',
-    'params': {
-      'warmup_epochs': 5,
-      'cycles': 0.5
-    }
-  }
-
 
 # Wandb configuration
 wandb:
-  state: true
+  state: False
   project: 'nefrobit'
   entity: 'nefrobit'
   reinit: true

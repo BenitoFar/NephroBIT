@@ -103,7 +103,7 @@ def train(cfg, train_loader, val_loader, results_dir):
             checkpoint = torch.load(os.path.join(results_dir, "last_epoch_model.pth"))
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            scheduler.load_state_dict(checkpoint(['scheduler_state_dict']))
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
             first_epoch = checkpoint['epoch']
             print(f"Resuming training from epoch {first_epoch}")
     else:
@@ -314,7 +314,7 @@ if __name__ == "__main__":
     #define parser to pass the configuration file
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/config_train_Unet.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/config_train_swinUNETR.yaml")
     args = parser.parse_args()
     cfg = args.config
     
