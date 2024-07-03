@@ -11,7 +11,8 @@ import torch
 import monai
 from monai.data import decollate_batch, DataLoader, CacheDataset
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from monai.optimizers.lr_scheduler import WarmupCosineSchedule
+from monai.
+.lr_scheduler import WarmupCosineSchedule
 from monai.losses import DiceCELoss
 from monai.apps.nuclick.transforms import SplitLabelMined
 from monai.apps import CrossValidation
@@ -42,7 +43,7 @@ import matplotlib.pyplot as plt
 from monai.utils import set_determinism
 import wandb 
 import random
-from utilites import seed_everything, prepare_data, load_config, save_jpg_mask, show_image, get_transforms, get_model
+from utilites import seed_everything, prepare_data, load_config, save_mask_jpg, show_image, get_transforms, get_model
 from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
 torch.autograd.set_detect_anomaly(True)
 
@@ -80,7 +81,7 @@ def train(cfg, train_loader, val_loader, results_dir):
     optimizer = torch.optim.Adam(model.parameters(), cfg['model']['optimizer']['params']['learning_rate'])
     
     if cfg['model']['scheduler']['name'] == "WarmupCosineSchedule":
-        warmup_steps = int(cfg['model']['scheduler']['params']['warmup_epochs'] * len(train_ds) / cfg['training']['train_batch_size'])
+        warmup_steps = int(cfg['model']['scheduler']['params']['warmup_epochs'] * len(train_ds) / cfg['training']['train_batch_size']) #train_ds.__ln__()
         t_total = int(cfg['training']['epoch'] * len(train_ds) / cfg['training']['train_batch_size'])
         scheduler = WarmupCosineSchedule(optimizer, warmup_steps=warmup_steps, t_total=t_total, cycles = cfg['model']['scheduler']['params']['cycles'], end_lr=1e-9)
     elif cfg['model']['scheduler']['name'] == "CosineAnnealingLR":
@@ -104,6 +105,10 @@ def train(cfg, train_loader, val_loader, results_dir):
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            #save state rng of torch, np and random
+            torch.set_rng_state(checkpoint['torch_rng_state'])
+            np.random.set_state(checkpoint['np_rng_state'])
+            random.setstate(checkpoint['random_rng_state'])
             first_epoch = checkpoint['epoch']
             print(f"Resuming training from epoch {first_epoch}")
     else:
@@ -155,6 +160,10 @@ def train(cfg, train_loader, val_loader, results_dir):
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': scheduler.state_dict(),
+            #save rng state of torch, np and random
+            'torch_rng_state': torch.get_rng_state(),
+            'np_rng_state': np.random.get_state(),
+            'random_rng_state': random.getstate()
         }, os.path.join(results_dir, "last_epoch_model.pth"))
         
         if cfg['wandb']['state']:
@@ -182,7 +191,7 @@ def train(cfg, train_loader, val_loader, results_dir):
                     #save output label image
                     val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
                     if (idx_val in val_indexes) and (epoch) % 4 == 0:
-                        show_image(val_images[0].cpu().numpy(), val_labels[0].cpu().numpy(), val_outputs[0].cpu().numpy(), os.path.join(results_images_dir,f'prediction_image_{idx_val}_epoch_{epoch}.png'))
+                        show_image(val_images[0].cpu().numpy(), val_labels[0].cpu().numpy(), val_outputs[0].cpu().numpy(), os.path.join(results_images_dir,f'prediction_image_{idx_val}_epoch_{epoch+1}.png'))
                     # compute metric for current iteration
                     dice_metric(y_pred=val_outputs, y=val_labels)
                     
@@ -207,7 +216,11 @@ def train(cfg, train_loader, val_loader, results_dir):
                             'epoch': epoch,
                             'model_state_dict': model.state_dict(),
                             'optimizer_state_dict': optimizer.state_dict(),
-                            'scheduler_state_dict': scheduler.state_dict(),                       
+                            'scheduler_state_dict': scheduler.state_dict(),
+                            #save rng state of torch, np and random
+                            'torch_rng_state': torch.get_rng_state(),
+                            'np_rng_state': np.random.get_state(),
+                            'random_rng_state': random.getstate()                   
                         }, os.path.join(results_dir, "best_metric_model.pth"))
                     print("saved new best metric model")
                 print(
@@ -242,7 +255,7 @@ def train(cfg, train_loader, val_loader, results_dir):
             val_outputs = sliding_window_inference(val_images, cfg['preprocessing']['roi_size'], sw_batch_size, model)
             val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
             #save output label image
-            save_jpg_mask(val_outputs, os.path.join(results_dir, 'predicted_masks', f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.jpg'))
+            save_mask_jpg(val_outputs, os.path.join(results_dir, 'predicted_masks', f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.jpg'))
 
 
 def main(cfg):

@@ -15,7 +15,7 @@ from monai.utils import set_determinism
 import wandb 
 from torchvision.transforms.functional import rotate
 from torchvision.transforms import RandomHorizontalFlip, RandomVerticalFlip
-from utilites import seed_everything, prepare_data, load_config, save_jpg_mask, get_model, get_transforms
+from utilites import seed_everything, prepare_data, load_config, save_mask_jpg, get_model, get_transforms
 import pandas as pd
 from monai.transforms.utils import allow_missing_keys_mode
 from monai.transforms.utils_pytorch_numpy_unification import mode, stack
@@ -121,12 +121,9 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
         for idx_val, val_data in enumerate(val_loader):
             val_images, val_labels = val_data["img"].to(device), val_data["label"].to(device)
             sw_batch_size = 1
-            if not cfg['validation']['timetestaugmentation']['status']:
-                val_outputs = sliding_window_inference(val_images, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'])
-                val_outputs = [val_post_transforms(i) for i in decollate_batch(val_outputs)]
-            else:
-                val_outputs = sliding_window_inference(val_images, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'])[0].detach().cpu()
-                
+            val_outputs_orig = sliding_window_inference(val_images, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'], device = device)
+            
+            if cfg['validation']['timetestaugmentation']['status']:
                 #apply model and then inverse the trasformations of each image
                 val_images_aug1 = rotate(val_images, 90)
                 val_images_aug2 = rotate(val_images, 180)
@@ -134,30 +131,33 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                 val_images_aug4 = RandomHorizontalFlip(1)(val_images)
                 val_images_aug5 = RandomVerticalFlip(1)(val_images)
                 
-                val_outputs_aug1 = sliding_window_inference(val_images_aug1, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'])[0].detach().cpu()
-                val_outputs_aug2 = sliding_window_inference(val_images_aug2, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'])[0].detach().cpu()
-                val_outputs_aug3 = sliding_window_inference(val_images_aug3, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'])[0].detach().cpu()
-                val_outputs_aug4 = sliding_window_inference(val_images_aug4, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'])[0].detach().cpu()
-                val_outputs_aug5 = sliding_window_inference(val_images_aug5, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'])[0].detach().cpu()
+                val_outputs_aug1 = sliding_window_inference(val_images_aug1, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'], device = device)
+                val_outputs_aug2 = sliding_window_inference(val_images_aug2, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'], device = device)
+                val_outputs_aug3 = sliding_window_inference(val_images_aug3, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'], device = device)
+                val_outputs_aug4 = sliding_window_inference(val_images_aug4, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'], device = device)
+                val_outputs_aug5 = sliding_window_inference(val_images_aug5, cfg['preprocessing']['roi_size'], sw_batch_size, model, mode = cfg['validation']['sliding_window_inference']['mode'], device = device)
                 
                 #inverse the transformations
-                val_outputs_aug1 = rotate(val_outputs_aug1, -90).to(device)
-                val_outputs_aug2 = rotate(val_outputs_aug2, -180).to(device)
-                val_outputs_aug3 = rotate(val_outputs_aug3, -270).to(device)
-                val_outputs_aug4 = RandomHorizontalFlip(1)(val_outputs_aug4).to(device)
-                val_outputs_aug5 = RandomVerticalFlip(1)(val_outputs_aug5).to(device)
+                val_outputs_aug1 = rotate(val_outputs_aug1, -90)
+                val_outputs_aug2 = rotate(val_outputs_aug2, -180)
+                val_outputs_aug3 = rotate(val_outputs_aug3, -270)
+                val_outputs_aug4 = RandomHorizontalFlip(1)(val_outputs_aug4)
+                val_outputs_aug5 = RandomVerticalFlip(1)(val_outputs_aug5)
                 
                 #take the mean of the 4 outputs
-                val_outputs = stack([val_outputs, val_outputs_aug1, val_outputs_aug2, val_outputs_aug3, val_outputs_aug4, val_outputs_aug5], 0)
-                val_outputs = val_outputs.mean(0) #mode(val_outputs, 0)
-                val_outputs = [val_post_transforms(i) for i in decollate_batch(val_outputs)]
-                #add dimension to val_outputs
-                val_outputs = [torch.unsqueeze(i, 0) for i in val_outputs]
+                val_outputs = stack([val_outputs_orig, val_outputs_aug1, val_outputs_aug2, val_outputs_aug3, val_outputs_aug4, val_outputs_aug5], 0)
+                val_outputs = val_outputs.mean(0, keepdim = True) #mode(val_outputs, 0)
+            else:
+                val_outputs = val_outputs_orig
+            
+            #apply post transforms
+            val_outputs = [val_post_transforms(i) for i in decollate_batch(val_outputs)]
+                
             # compute metric for current iteration
             actual_dice = dice_metric(y_pred=val_outputs, y=val_labels)
             #save prediction mask as jpg
-            if save_masks: save_jpg_mask(val_outputs[0].cpu().numpy().squeeze(), os.path.join(results_dir_masks, f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.jpg'))
-            df.loc[idx_val, 'id'] = val_data["label_path"][0].split("/")[-4]
+            if save_masks: save_mask_jpg(val_outputs[0].cpu().numpy().squeeze()*255, os.path.join(results_dir_masks, f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.jpg'))
+            df.loc[idx_val, 'id'] = val_data["label_path"][0].split("/")[-3]
             df.loc[idx_val, 'id_patch'] = val_data["label_path"][0].split("/")[-1].split(".jpg")[0]
             df.loc[idx_val, 'class'] = val_data["label_path"][0].split("/")[-4]
             df.loc[idx_val, 'dice'] = actual_dice.cpu().numpy().squeeze()

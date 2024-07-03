@@ -29,18 +29,15 @@ from monai.transforms import (
 )
 import monai
 from skimage import measure
+from PIL import Image
+import cv2
 
-def save_jpg_mask(image, output_path):
-    plt.imshow(image, cmap="gray")
-    plt.axis("off")
-    plt.savefig(output_path, bbox_inches="tight", pad_inches=0)
-    plt.close()
-
-def save_jpg_image(image, output_path):
-    plt.imshow(image)
-    plt.axis("off")
-    plt.savefig(output_path, bbox_inches="tight", pad_inches=0)
-    plt.close()
+def save_image_jpg(image, output_path, mode = 'RGB'):
+    img = Image.fromarray(image, mode)
+    img.save(output_path)
+    
+def save_mask_jpg(image, output_path):
+    cv2.imwrite(output_path, image)
     
 def show_image(image, label, predictions = None, filename = None):
     # print(f"Image: {image.shape}; Label: {label.shape}")
@@ -172,10 +169,10 @@ def get_transforms(cfg, phase):
                     EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
                     # #SplitLabelMined(keys="label"),
                     RandCropByPosNegLabeld(
-                        keys=["img", "label"], label_key="label", spatial_size= cfg['preprocessing']['roi_size'], pos=3, neg=1, num_samples=cfg['preprocessing']['num_samples_per_image']
+                        keys=["img", "label"], label_key="label", spatial_size= cfg['preprocessing']['roi_size'], pos=1, neg=0, num_samples=cfg['preprocessing']['num_samples_per_image'], allow_smaller = False
                     ),
                     AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
-                    ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True), 
+                    # ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True), 
                     SelectItemsd(keys=("img", "label", "case_id", "case_class", "img_path", "label_path")),
                     ]
                 )

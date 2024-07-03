@@ -16,7 +16,7 @@ from monai.inferers import  SlidingWindowInferer
 from monai.utils import set_determinism
 import wandb 
 from collections import Counter
-from utilites import seed_everything, prepare_data, load_config, save_jpg_mask, get_model, get_transforms
+from utilites import seed_everything, prepare_data, load_config, save_mask_jpg, get_model, get_transforms
 from evaluate import evaluate_func
 
 def main(cfg):

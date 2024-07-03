@@ -23,7 +23,7 @@ validation:
   num_workers: 4
   cache_rate: 0.5
   sliding_window_inference: {
-    'mode': 'gaussian'
+    'mode': 'gaussian' #'constant'
   }
   timetestaugmentation: {
     'status': True,

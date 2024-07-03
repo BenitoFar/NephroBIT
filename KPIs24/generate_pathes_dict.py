@@ -19,22 +19,7 @@ from monai.inferers import sliding_window_inference
 from monai.metrics import DiceMetric
 from torch.utils.data import Subset
 from monai.transforms import (
-    Activations,
-    EnsureChannelFirstd,
-    AsDiscrete,
-    Compose,
-    LoadImaged,
-    RandCropByPosNegLabeld,
-    RandRotate90d,
-    ScaleIntensityRangeD,
-    RandFlipd,
-    SelectItemsd,
-    LabelToMaskd,
-    Resized,
-    OneOf, 
-    RandGaussianSmoothd, 
-    MedianSmoothd, 
-    RandGaussianNoised
+    SaveImage
 )
 from losses import HoVerNetLoss
 from collections import Counter
@@ -42,7 +27,7 @@ import matplotlib.pyplot as plt
 from monai.utils import set_determinism
 import wandb 
 import random
-from utilites import seed_everything, prepare_data, load_config, save_jpg_mask, save_jpg_image, show_image, get_transforms, get_model
+from utilites import seed_everything, prepare_data, load_config, save_image_jpg, save_mask_jpg, show_image, get_transforms, get_model
 from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
 torch.autograd.set_detect_anomaly(True)
 
@@ -56,14 +41,17 @@ def main(cfg):
     seed_everything(cfg['seed'])
     
     #get validation list files
-    datadir = os.path.join(cfg['datadir'], f"fold_{cfg['val_fold']}")
+    if cfg['val_fold'] is not None:
+        datadir = os.path.join(cfg['datadir'], f"fold_{cfg['val_fold']}")
+    else:
+        datadir = cfg['datadir']
     data_list = prepare_data(datadir)
     
     print('Number of images:', len(data_list))
     
     train_transforms = get_transforms(cfg, 'generate_patches')
     
-    print('Fold:', cfg['val_fold'])
+    if cfg['val_fold'] is not None: print('Fold:', cfg['val_fold'])
     print('Number of images by class:', Counter([data_list[i]['case_class'] for i in range(len(data_list))]))
 
     dss= CacheDataset(np.array(data_list), transform=train_transforms, cache_rate=0.5, cache_num=sys.maxsize, num_workers=4)
@@ -71,7 +59,11 @@ def main(cfg):
     loader = DataLoader(dss, batch_size=1, shuffle=True, num_workers=4, persistent_workers=True, pin_memory=torch.cuda.is_available()) 
     
     # check same train images
-    results_fold_dir = os.path.join(cfg['results_dir'], f"fold_{cfg['val_fold']}")
+    if cfg['val_fold'] is not None: 
+        results_fold_dir = os.path.join(cfg['results_dir'], f"fold_{cfg['val_fold']}")
+    else:
+        results_fold_dir = cfg['results_dir']
+        
     os.makedirs(results_fold_dir, exist_ok=True)
     
     for idx_img, batch_data in enumerate(loader):
@@ -81,8 +73,8 @@ def main(cfg):
             #make dir
             os.makedirs(os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'img'), exist_ok=True)
             os.makedirs(os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'mask'), exist_ok=True)
-            save_jpg_image(inputs[idx].permute(1, 2, 0), os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'img', f"{batch_data['img_path'][idx].split('/')[-1].split('.jpg')[0]}_{idx}.jpg"))
-            save_jpg_mask(labels[idx].permute(1, 2, 0), os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'mask', f"{batch_data['label_path'][idx].split('/')[-1].split('.jpg')[0]}_{idx}.jpg"))
+            save_image_jpg(inputs[idx].permute(1, 2, 0).cpu().detach().numpy(), os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'img', f"{batch_data['img_path'][idx].split('/')[-1].split('.jpg')[0]}_{idx}.jpg"), mode = 'RGB')
+            save_mask_jpg((labels[idx].cpu().detach().numpy()[0]*255).astype(np.uint8), os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'mask', f"{batch_data['label_path'][idx].split('/')[-1].split('.jpg')[0]}_{idx}.jpg"))
             
         
 if __name__ == "__main__":
