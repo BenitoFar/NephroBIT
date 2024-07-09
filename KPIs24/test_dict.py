@@ -5,7 +5,7 @@ import torch.distributed as dist
 import matplotlib.pyplot as plt
 import numpy as np
 import monai
-import torch
+import argparse
 from monai.metrics import DiceMetric
 from monai.engines import EnsembleEvaluator
 from monai.data import decollate_batch, CacheDataset, DataLoader
@@ -40,7 +40,7 @@ def main(cfg):
     
     
     results_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'], 
-                               ("ensemble" if cfg['ensemble'] else f"fold_{cfg['val_fold']}"), 
+                               ("ensemble" if cfg['ensemble'] else f"{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"), 
                                cfg['inference_type'], 
                                cfg['validation']['sliding_window_inference']['mode'] + '_windowing',
                                ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"))
@@ -64,5 +64,8 @@ def main(cfg):
     # if cfg['wandb']['state']: wandb.finish()
     
 if __name__ == "__main__":
-    cfg = "/home/benito/script/NephroBIT/KPIs24/config_test_swinUNETR.yaml"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_test_Unet_noCV.yaml")
+    args = parser.parse_args()
+    cfg = args.config
     main(cfg)

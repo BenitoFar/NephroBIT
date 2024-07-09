@@ -97,12 +97,22 @@ def create_log_dir(cfg):
 
 def prepare_data(datadir):
     """prepare data list"""
-    #get 100 random values between 0 and 2000
-    images = sorted(glob(os.path.join(datadir, "**/*img.jpg"), recursive = True))
-    masks = sorted(glob(os.path.join(datadir, "**/*mask.jpg"), recursive = True))
+    
+    images = sorted(glob(os.path.join(datadir, "**/*img*"), recursive=True)) #sorted(glob(os.path.join(datadir, "**/*img.jpg"), recursive=True))
+    masks = sorted(glob(os.path.join(datadir, "**/*mask*"), recursive = True)) #sorted(glob(os.path.join(datadir, "**/*mask.jpg"), recursive = True))
+    #remove all elements that are not files (directories)
+    images = [x for x in images if os.path.isfile(x)]
+    masks = [x for x in masks if os.path.isfile(x)]
+    #check if the number of images and masks is the same
+    assert len(images) == len(masks)
+    
     print('Number of images:', len(images))
+    
+    class_list = ['56Nx', 'DN', 'normal', 'NEP25']
+    index = [i for i, string in enumerate(os.path.dirname(images[0]).split('/')) if string in class_list][0]
+        
     data_list = [
-        {"img": _image, "label": _label, 'case_class': os.path.dirname(_image).split('/')[-3], 'case_id': os.path.dirname(_image).split('/')[-2], 'img_path': _image, 'label_path': _label}
+        {"img": _image, "label": _label, 'case_class': os.path.dirname(_image).split('/')[index], 'case_id': os.path.dirname(_image).split('/')[index+1], 'img_path': _image, 'label_path': _label}
         for _image, _label in zip(images, masks)
     ]
     return data_list
@@ -180,7 +190,41 @@ def get_transforms(cfg, phase):
             return transforms
         else:
             raise ValueError(f"Unknown phase: {phase}")
-        
+    elif cfg['preprocessing']['image_preprocess'] == 'PatchesPix2Pix':
+        if phase == 'train':
+            train_transforms = Compose(
+                    [
+                    LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                    EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                    EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                    OneOf(
+                        transforms=[
+                            RandGaussianSmoothd(keys=["img"], sigma_x=(0.1, 1.1), sigma_y=(0.1, 1.1), prob=1.0),
+                            MedianSmoothd(keys=["img"], radius=1),
+                            RandGaussianNoised(keys=["img"], prob=1.0, std=0.05),
+                        ]
+                    ),   
+                    AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
+                    ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True), 
+                    SelectItemsd(keys=("img", "label", "case_id", "case_class", "img_path", "label_path")),
+                    ]
+                )
+            train_transforms.set_random_state(seed=cfg['seed'])
+            return train_transforms    
+        elif phase == 'val' or phase == 'test':
+            val_transforms = Compose(
+                    [
+                    LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                    EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                    EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                    #SplitLabelMined(keys="label"),
+                    AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
+                    ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                    SelectItemsd(keys=("img", "label","case_id", "case_class", "img_path", "label_path")),
+                    ]
+                )
+            val_transforms.set_random_state(seed=cfg['seed'])
+            return val_transforms
     elif cfg['preprocessing']['image_preprocess'] == 'Resize':
         if phase == 'train':
             train_transforms = Compose(

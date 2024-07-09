@@ -71,7 +71,7 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                 print("Model for fold {} does not exist".format(fold))
             models.append(model)
     else:
-        model = get_model(cfg, os.path.join(cfg['modeldir'], f"fold_{cfg['val_fold']}", "best_metric_model.pth"))
+        model = get_model(cfg, os.path.join(cfg['modeldir'], f"{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}", "best_metric_model.pth"))
     
     if cfg['ensemble']:
         #evaluate each model 
@@ -146,7 +146,7 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                 
                 #take the mean of the 4 outputs
                 val_outputs = stack([val_outputs_orig, val_outputs_aug1, val_outputs_aug2, val_outputs_aug3, val_outputs_aug4, val_outputs_aug5], 0)
-                val_outputs = val_outputs.mean(0, keepdim = True) #mode(val_outputs, 0)
+                val_outputs = val_outputs.mean(0, keepdim = True) #mode(val_outputs, 0) or sum(val_outputs)/len(val_outputs)
             else:
                 val_outputs = val_outputs_orig
             

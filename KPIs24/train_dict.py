@@ -11,8 +11,7 @@ import torch
 import monai
 from monai.data import decollate_batch, DataLoader, CacheDataset
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from monai.
-.lr_scheduler import WarmupCosineSchedule
+from monai.optimizers import WarmupCosineSchedule
 from monai.losses import DiceCELoss
 from monai.apps.nuclick.transforms import SplitLabelMined
 from monai.apps import CrossValidation
@@ -269,16 +268,22 @@ def main(cfg):
     datadir = cfg['datadir']
     
     #get validation list files
-    datadir_val = os.path.join(datadir, f"fold_{cfg['val_fold']}")
-    data_list_val = prepare_data(datadir_val)
-    
-    #get train list files
-    data_list_train = []
-    for i in range(cfg['nfolds']):
-        if i != cfg['val_fold']:
-            datadir_train = os.path.join(datadir, f'fold_{i}')
-            datalist_fold_train = prepare_data(datadir_train)
-            data_list_train.extend(datalist_fold_train)
+    if cfg['val_fold'] != 'validation_cohort':
+        datadir_val = os.path.join(datadir, f"fold_{cfg['val_fold']}")
+        data_list_val = prepare_data(datadir_val)
+        
+        #get train list files
+        data_list_train = []
+        for i in range(cfg['nfolds']):
+            if i != cfg['val_fold']:
+                datadir_train = os.path.join(datadir, f'fold_{i}')
+                datalist_fold_train = prepare_data(datadir_train)
+                data_list_train.extend(datalist_fold_train)
+    else:
+        #get train list files
+        data_list_train = prepare_data(cfg['datadir'])
+        data_list_val = prepare_data(cfg['datadir_val'])
+        
     print('Number of training images:', len(data_list_train), 'Number of validation images:', len(data_list_val))
     train_transforms = get_transforms(cfg, 'train')
     val_transforms = get_transforms(cfg, 'val')
@@ -294,7 +299,7 @@ def main(cfg):
     val_loader = DataLoader(val_dss, batch_size=cfg['training']['val_batch_size'], num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
     
     # check same train images
-    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'],  f"fold_{cfg['val_fold']}")
+    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'],  f"{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
     os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
     
     check_loader = train_loader
@@ -307,7 +312,7 @@ def main(cfg):
         show_image(check_image, check_label, None, os.path.join(results_fold_dir, f'train_images_examples', f'train_sample_{i}.png'))   
         
     if cfg['wandb']['state']:
-        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-fold{cfg['val_fold']:02}"
+        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
         wandb.init(project=cfg['wandb']['project'], 
                 name=run_name, 
                 group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
@@ -327,7 +332,7 @@ if __name__ == "__main__":
     #define parser to pass the configuration file
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/config_train_swinUNETR.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_train_Unet_noCV.yaml")
     args = parser.parse_args()
     cfg = args.config
     

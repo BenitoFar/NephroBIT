@@ -5,7 +5,7 @@ import torch.distributed as dist
 import matplotlib.pyplot as plt
 import numpy as np
 import monai
-import torch
+import argparse
 from monai.metrics import DiceMetric
 from monai.engines import EnsembleEvaluator
 from monai.data import decollate_batch, CacheDataset, DataLoader
@@ -63,5 +63,9 @@ def main(cfg):
     # if cfg['wandb']['state']: wandb.finish()
     
 if __name__ == "__main__":
-    cfg = "/home/benito/script/NephroBIT/KPIs24/config_val_swinUNETR.yaml"
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", help="configuration file", default="config_val_swinUNETR.yaml")
+    args = parser.parse_args()
+    cfg = args.config
     main(cfg)

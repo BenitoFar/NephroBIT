@@ -1,0 +1,74 @@
+#Configuration for training
+# File paths
+results_dir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/results/"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/"
+
+device_number: 0
+seed: 44
+resume_training: False
+nfolds: 3
+val_fold: 0
+
+preprocessing:
+  image_preprocess: 'CropPosNeg' #'Resize', 
+  roi_size: [512, 512]
+  num_samples_per_image: 4
+
+# Training configuration
+training:
+  epoch: 100
+  val_interval: 1
+  train_batch_size: 2
+  val_batch_size: 1
+  num_workers: 4
+  cache_rate: 0.5
+  loss: DiceCELoss
+  loss_params: {
+    'lambda_dice': 1.0,
+    'lambda_ce': 1.0
+  }
+
+# Model configuration
+model:
+  name: 'UNETR'
+  params: {
+    'in_channels': 3,
+    'spatial_dims': 2,
+    'out_channels': 1,
+    'feature_size': 16,
+    'hidden_size': 768, # base = 768, small = 384, tiny = 192
+    'mlp_dim': 3072, # base = 3072, small = 1024, tiny = 256
+    'num_heads': 12, #base = 12, small = 6, tiny = 3
+  }
+  optimizer: {
+    'name': 'Adam',
+    'params': {
+      'learning_rate': 0.0001,
+      'weight_decay': 0.0001
+    }
+  }
+
+  # scheduler: {
+  #   'name': 'CosineAnnealingLR',
+  #   'params': {
+  #     'T_max': 10
+  #   }
+  # }
+  
+  scheduler: {
+    'name': 'WarmupCosineSchedule',
+    'params': {
+      'warmup_epochs': 5,
+      'cycles': 0.5
+    }
+  }
+
+
+# Wandb configuration
+wandb:
+  state: True
+  project: 'nefrobit'
+  entity: 'nefrobit'
+  reinit: true
+  resume: 'allow'
+  group_name: 'KPIs24'

@@ -1,0 +1,54 @@
+#Configuration for training
+# File paths
+results_dir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/results/"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/"
+modeldir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/results/3foldCV/SwinUNETR/CropPosNeg"
+
+device_number: 1
+seed: 44
+ensemble: False
+nfolds: 3
+val_fold: 0
+inference_type: 'validation'
+save_masks: True
+
+preprocessing:
+  image_preprocess: 'CropPosNeg' #'Resize', 
+  roi_size: [512, 512]
+  num_samples_per_image: 4
+
+# Training configuration
+validation:
+  val_interval: 1
+  val_batch_size: 1
+  num_workers: 4
+  cache_rate: 0.1
+  sliding_window_inference: {
+      'mode': 'constant', #'gaussian'
+    }
+  timetestaugmentation: {
+      'status': False,
+    }
+
+# Model configuration
+model:
+  name: 'SwinUNETR'
+  params: {
+    'in_channels': 3,
+    'spatial_dims': 2,
+    'out_channels': 1,
+    'feature_size': 24,
+    'num_heads': [3, 6, 12, 24],
+    'depths': [2, 2, 2, 2],
+    'use_v2': False
+
+  }
+
+# Wandb configuration
+wandb:
+  state: False
+  project: 'nefrobit'
+  entity: 'nefrobit'
+  reinit: true
+  resume: 'allow'
+  group_name: 'KPIs24'

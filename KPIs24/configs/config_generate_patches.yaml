@@ -1,0 +1,15 @@
+#Configuration for training
+# File paths
+results_dir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split_small_patches_updated"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/" #"/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/train/"
+
+device_number: 1
+seed: 44
+nfolds: 3
+val_fold: 2 #2
+
+preprocessing:
+  image_preprocess: 'CropPosNeg' #'Resize', 
+  roi_size: [512, 512]
+  num_samples_per_image: 5
+
