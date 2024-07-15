@@ -59,28 +59,29 @@ def main(cfg):
     loader = DataLoader(dss, batch_size=1, shuffle=True, num_workers=4, persistent_workers=True, pin_memory=torch.cuda.is_available()) 
     
     # check same train images
+    
     if cfg['val_fold'] is not None: 
-        results_fold_dir = os.path.join(cfg['results_dir'], f"fold_{cfg['val_fold']}")
+        results_directory = os.path.join(cfg['results_dir'], f"fold_{cfg['val_fold']}")
     else:
-        results_fold_dir = cfg['results_dir']
+        results_directory = cfg['results_dir']
         
-    os.makedirs(results_fold_dir, exist_ok=True)
+    os.makedirs(results_directory, exist_ok=True)
     
     for idx_img, batch_data in enumerate(loader):
         inputs, labels = batch_data["img"], batch_data["label"]
         #save inputs and labels as jpg
         for idx in range(inputs.shape[0]):
             #make dir
-            os.makedirs(os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'img'), exist_ok=True)
-            os.makedirs(os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'mask'), exist_ok=True)
-            save_image_jpg(inputs[idx].permute(1, 2, 0).cpu().detach().numpy(), os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'img', f"{batch_data['img_path'][idx].split('/')[-1].split('.jpg')[0]}_{idx}.jpg"), mode = 'RGB')
-            save_mask_jpg((labels[idx].cpu().detach().numpy()[0]*255).astype(np.uint8), os.path.join(results_fold_dir, batch_data['case_class'][idx],batch_data['case_id'][idx], 'mask', f"{batch_data['label_path'][idx].split('/')[-1].split('.jpg')[0]}_{idx}.jpg"))
+            os.makedirs(os.path.join(results_directory, batch_data['case_class'][idx],batch_data['case_id'][idx], 'img'), exist_ok=True)
+            os.makedirs(os.path.join(results_directory, batch_data['case_class'][idx],batch_data['case_id'][idx], 'mask'), exist_ok=True)
+            save_image_jpg(inputs[idx].permute(1, 2, 0).cpu().detach().numpy(), os.path.join(results_directory, batch_data['case_class'][idx],batch_data['case_id'][idx], 'img', f"{batch_data['img_path'][idx].split('/')[-1].split('.jpg')[0]}_{idx}.jpg"), mode = 'RGB')
+            save_image_jpg((labels[idx].cpu().detach().numpy()[0]*255), os.path.join(results_directory, batch_data['case_class'][idx],batch_data['case_id'][idx], 'mask', f"{batch_data['label_path'][idx].split('/')[-1].split('.jpg')[0]}_{idx}.png"), mode = 'L')
             
         
 if __name__ == "__main__":
     #define parser to pass the configuration file
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/config_generate_patches.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_generate_patches.yaml")
     args = parser.parse_args()
     cfg = args.config
     

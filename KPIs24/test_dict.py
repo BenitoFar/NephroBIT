@@ -31,19 +31,32 @@ def main(cfg):
     datadir_val = cfg['datadir']
     data_list_val = prepare_data(datadir_val)
     
-    val_transforms = get_transforms(cfg, 'test')
-    
+    if not cfg['ensemble']:
+        val_transforms = get_transforms(cfg, 'test')
+    else:
+        #this is necessary because the function for ensemble need the key to be 'image' 
+        for item in data_list_val:
+            item['image'] = item.pop('img')
+        
+        val_transforms = get_transforms(cfg, 'ensemble')
     
     print('Number of test images by class:', Counter([data_list_val[i]['case_class'] for i in range(len(data_list_val))]))
     val_dss = CacheDataset(np.array(data_list_val), transform=val_transforms, cache_rate = cfg['validation']['cache_rate'], cache_num=sys.maxsize, num_workers=cfg['validation']['num_workers'])
     val_loader = DataLoader(val_dss, batch_size=cfg['validation']['val_batch_size'], num_workers=cfg['validation']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
     
     
-    results_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'], 
-                               ("ensemble" if cfg['ensemble'] else f"{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"), 
-                               cfg['inference_type'], 
-                               cfg['validation']['sliding_window_inference']['mode'] + '_windowing',
-                               ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"))
+    if cfg['ensemble']:
+        results_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", "ensemble_" +"_".join([l for l in cfg['model']['name']]), cfg['preprocessing']['image_preprocess'], 
+                                ('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort'), 
+                                cfg['inference_type'], 
+                                cfg['validation']['sliding_window_inference']['mode'] + '_windowing',
+                                ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"))
+    else:
+        results_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'], 
+                                ("ensembleCV" if cfg['ensemble'] else f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"), 
+                                cfg['inference_type'], 
+                                cfg['validation']['sliding_window_inference']['mode'] + '_windowing',
+                                ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"))
     
     os.makedirs(results_dir, exist_ok=True)
     
@@ -65,7 +78,7 @@ def main(cfg):
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_test_Unet_noCV.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_test_ensemble.yaml")
     args = parser.parse_args()
     cfg = args.config
     main(cfg)

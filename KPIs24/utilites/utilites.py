@@ -15,6 +15,8 @@ from monai.transforms import (
     LoadImaged,
     RandCropByPosNegLabeld,
     RandRotate90d,
+    CropForegroundd,
+    ResizeWithPadOrCropd,
     Lambdad,
     ComputeHoVerMaps,
     ScaleIntensityRangeD,
@@ -37,8 +39,10 @@ def save_image_jpg(image, output_path, mode = 'RGB'):
     img.save(output_path)
     
 def save_mask_jpg(image, output_path):
-    cv2.imwrite(output_path, image)
-    
+    # img = Image.fromarray(image, 'L')
+    # img.save(output_path)
+    pass
+
 def show_image(image, label, predictions = None, filename = None):
     # print(f"Image: {image.shape}; Label: {label.shape}")
 
@@ -171,6 +175,102 @@ def get_transforms(cfg, phase):
                 )
             val_transforms.set_random_state(seed=cfg['seed'])
             return val_transforms
+        elif phase == 'ensemble':
+            val_transforms = Compose(
+                    [
+                        LoadImaged(keys=["image", "label"], dtype=torch.uint8),
+                        EnsureChannelFirstd(keys=["image"], channel_dim=-1),
+                        EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                        AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
+                        ScaleIntensityRangeD(keys=("image"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                        SelectItemsd(keys=("image", "label","case_id", "case_class", "img_path", "label_path")),
+                        ]
+                    )
+            val_transforms.set_random_state(seed=cfg['seed'])
+            return val_transforms
+        elif phase == 'generate_patches':
+            transforms = Compose(
+                    [
+                    LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                    EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                    EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                    # #SplitLabelMined(keys="label"),
+                    RandCropByPosNegLabeld(
+                        keys=["img", "label"], label_key="label", spatial_size= cfg['preprocessing']['roi_size'], pos=1, neg=0, num_samples=cfg['preprocessing']['num_samples_per_image'], allow_smaller = False
+                    ),
+                    AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
+                    # ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True), 
+                    SelectItemsd(keys=("img", "label", "case_id", "case_class", "img_path", "label_path")),
+                    ]
+                )
+            transforms.set_random_state(seed=cfg['seed'])
+            return transforms
+        else:
+            raise ValueError(f"Unknown phase: {phase}")
+    elif cfg['preprocessing']['image_preprocess'] == 'CropPosNeg-ResizeLargePatch-FlipRot':
+        if phase == 'train':
+            train_transforms = Compose(
+                    [
+                    LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                    EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                    EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                    # #SplitLabelMined(keys="label"),
+                    OneOf( 
+                          transforms = [
+                            RandCropByPosNegLabeld(
+                                keys=["img", "label"], label_key="label", spatial_size= cfg['preprocessing']['roi_size'], pos=3, neg=1, num_samples=cfg['preprocessing']['num_samples_per_image']),
+                            Compose(
+                                CropForegroundd(keys=("img", "label"), source_key="img", spatial_size=(1024, 1024)), 
+                                ResizeWithPadOrCropd(keys=("img", "label"), spatial_size=(512, 512)),
+                            )
+                            ],
+                          weights=[0.9,0.1]
+                    ),
+                    RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=0),
+                    RandFlipd(keys=("img", "label"), prob=0.5, spatial_axis=1),
+                    RandRotate90d(keys=("img", "label"), prob=0.5, spatial_axes=(0, 1)),
+                                        
+                    OneOf(
+                        transforms=[
+                            RandGaussianSmoothd(keys=["img"], sigma_x=(0.1, 1.1), sigma_y=(0.1, 1.1), prob=1.0),
+                            MedianSmoothd(keys=["img"], radius=1),
+                            RandGaussianNoised(keys=["img"], prob=1.0, std=0.05),
+                        ]
+                    ),   
+                    AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
+                    ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True), 
+                    SelectItemsd(keys=("img", "label", "case_id", "case_class", "img_path", "label_path")),
+                    ]
+                )
+            train_transforms.set_random_state(seed=cfg['seed'])
+            return train_transforms
+        elif phase == 'val' or phase == 'test':
+            val_transforms = Compose(
+                    [
+                    LoadImaged(keys=["img", "label"], dtype=torch.uint8),
+                    EnsureChannelFirstd(keys=["img"], channel_dim=-1),
+                    EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                    #SplitLabelMined(keys="label"),
+                    AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
+                    ScaleIntensityRangeD(keys=("img"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                    SelectItemsd(keys=("img", "label","case_id", "case_class", "img_path", "label_path")),
+                    ]
+                )
+            val_transforms.set_random_state(seed=cfg['seed'])
+            return val_transforms
+        elif phase == 'ensemble':
+            val_transforms = Compose(
+                    [
+                        LoadImaged(keys=["image", "label"], dtype=torch.uint8),
+                        EnsureChannelFirstd(keys=["image"], channel_dim=-1),
+                        EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                        AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
+                        ScaleIntensityRangeD(keys=("image"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                        SelectItemsd(keys=("image", "label","case_id", "case_class", "img_path", "label_path")),
+                        ]
+                    )
+            val_transforms.set_random_state(seed=cfg['seed'])
+            return val_transforms
         elif phase == 'generate_patches':
             transforms = Compose(
                     [
@@ -225,6 +325,22 @@ def get_transforms(cfg, phase):
                 )
             val_transforms.set_random_state(seed=cfg['seed'])
             return val_transforms
+        elif phase == 'ensemble':
+            val_transforms = Compose(
+                    [
+                        LoadImaged(keys=["image", "label"], dtype=torch.uint8),
+                        EnsureChannelFirstd(keys=["image"], channel_dim=-1),
+                        EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                        #SplitLabelMined(keys="label"),
+                        AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
+                        ScaleIntensityRangeD(keys=("image"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                        SelectItemsd(keys=("image", "label","case_id", "case_class", "img_path", "label_path")),
+                        ]
+                    )
+            val_transforms.set_random_state(seed=cfg['seed'])
+            return val_transforms
+        else:
+            raise ValueError(f"Unknown phase: {phase}")
     elif cfg['preprocessing']['image_preprocess'] == 'Resize':
         if phase == 'train':
             train_transforms = Compose(
@@ -266,6 +382,22 @@ def get_transforms(cfg, phase):
                     )
             val_transforms.set_random_state(seed=cfg['seed'])
             return val_transforms
+        elif phase == 'ensemble':
+            val_transforms = Compose(
+                    [
+                        LoadImaged(keys=["image", "label"], dtype=torch.uint8),
+                        EnsureChannelFirstd(keys=["image"], channel_dim=-1),
+                        EnsureChannelFirstd(keys=["label"], channel_dim='no_channel'),
+                        #SplitLabelMined(keys="label"),
+                        Resized(keys=("image", "label"), spatial_size=cfg['preprocessing']['roi_size']),
+                        AsDiscreted(keys="label", threshold= 1, dtype=torch.uint8),
+                        ScaleIntensityRangeD(keys=("image"), a_min=0.0, a_max=255.0, b_min=0, b_max=1.0, clip=True),
+                        SelectItemsd(keys=("image", "label","case_id", "case_class", "img_path", "label_path")),
+                        ]
+                    )
+            val_transforms.set_random_state(seed=cfg['seed'])
+            return val_transforms
+        
         else:
             raise ValueError(f"Unknown phase: {phase}")
         
@@ -273,60 +405,96 @@ def get_transforms(cfg, phase):
         raise ValueError(f"Unknown image_preprocess: {cfg['preprocessing']['image_preprocess']}")
     
     
-def get_model(cfg, pretrained_path = None):
+
+def get_model(cfg, pretrained_path=None):
     device = torch.device(f"cuda:{cfg['device_number']}" if torch.cuda.is_available() else "cpu")
-    # create UNet, DiceLoss and Adam optimizer
-    if cfg['model']['name'] == "Unet":
-        model = monai.networks.nets.UNet(
-            spatial_dims=cfg['model']['params']['spatial_dims'],
-            in_channels=cfg['model']['params']['in_channels'],
-            out_channels=cfg['model']['params']['out_channels'],
-            channels=cfg['model']['params']['f_maps_channels'],
-            strides=cfg['model']['params']['strides'],
-            num_res_units=cfg['model']['params']['num_res_units'],
-        ).to(device)
-    elif cfg['model']['name'] == "UNETR":
-        model = monai.networks.nets.UNETR(
-            in_channels=cfg['model']['params']['in_channels'],
-            out_channels=cfg['model']['params']['out_channels'],
-            img_size=cfg['preprocessing']['roi_size'],
-            spatial_dims = cfg['model']['params']['spatial_dims'],
-            feature_size=cfg['model']['params']['feature_size'],
-            hidden_size=cfg['model']['params']['hidden_size'],
-            mlp_dim=cfg['model']['params']['mlp_dim'],
-            num_heads=cfg['model']['params']['num_heads'],
-        ).to(device)
-    elif cfg['model']['name'] == "SwinUNETR":
-        model = monai.networks.nets.SwinUNETR(
-            img_size=cfg['preprocessing']['roi_size'],
-            in_channels=cfg['model']['params']['in_channels'],
-            out_channels=cfg['model']['params']['out_channels'],
-            spatial_dims = cfg['model']['params']['spatial_dims'],
-            depths = cfg['model']['params']['depths'],
-            num_heads = cfg['model']['params']['num_heads'],
-            feature_size = cfg['model']['params']['feature_size'],
-            use_v2 = cfg['model']['params']['use_v2'],
-        ).to(device)
-    elif cfg['model']['name'] == "HoVerSwinUNETR":
-        model = monai.networks.nets.HoVerSwinUNETR(
-            img_size=cfg['preprocessing']['roi_size'],
-            in_channels=cfg['model']['params']['in_channels'],
-            out_channels=cfg['model']['params']['out_channels'],
-            spatial_dims = cfg['model']['params']['spatial_dims'],
-            depths = cfg['model']['params']['depths'],
-            num_heads = cfg['model']['params']['num_heads'],
-            feature_size = cfg['model']['params']['feature_size'],
-            hovermaps = cfg['model']['params']['hovermaps'],
-            freeze_encoder = cfg['model']['params']['freeze_encoder'],
-            freeze_decoder_bin = cfg['model']['params']['freeze_decoder_bin'],
-        ).to(device)
+    models = []
+
+    def create_model(model_name, model_params):
+        if model_name == "Unet":
+            return monai.networks.nets.UNet(
+                spatial_dims=model_params['spatial_dims'],
+                in_channels=model_params['in_channels'],
+                out_channels=model_params['out_channels'],
+                channels=model_params['f_maps_channels'],
+                strides=model_params['strides'],
+                num_res_units=model_params['num_res_units'],
+            ).to(device)
+        elif model_name == "UNETR":
+            return monai.networks.nets.UNETR(
+                in_channels=model_params['in_channels'],
+                out_channels=model_params['out_channels'],
+                img_size=cfg['preprocessing']['roi_size'],
+                spatial_dims=model_params['spatial_dims'],
+                feature_size=model_params['feature_size'],
+                hidden_size=model_params['hidden_size'],
+                mlp_dim=model_params['mlp_dim'],
+                num_heads=model_params['num_heads'],
+            ).to(device)
+        elif model_name == "SwinUNETR":
+            return monai.networks.nets.SwinUNETR(
+                img_size=cfg['preprocessing']['roi_size'],
+                in_channels=model_params['in_channels'],
+                out_channels=model_params['out_channels'],
+                spatial_dims=model_params['spatial_dims'],
+                depths=model_params['depths'],
+                num_heads=model_params['num_heads'],
+                feature_size=model_params['feature_size'],
+                use_v2=model_params['use_v2'],
+            ).to(device)
+        elif model_name == "DynUNet":
+            kernels = [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+            strides = [[1, 1], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2], [2, 2]]
+            return monai.networks.nets.DynUNet(
+                spatial_dims=model_params['spatial_dims'],
+                in_channels=model_params['in_channels'],
+                out_channels=model_params['out_channels'],
+                kernel_size=kernels,
+                strides=strides,
+                upsample_kernel_size=strides[1:],
+                norm_name="instance",
+                deep_supervision=model_params['deep_supervision'],
+                res_block=model_params['res_block'],
+            ).to(device)
+        elif model_name == "HoVerSwinUNETR":
+            return monai.networks.nets.HoVerSwinUNETR(
+                img_size=cfg['preprocessing']['roi_size'],
+                in_channels=model_params['in_channels'],
+                out_channels=model_params['out_channels'],
+                spatial_dims=model_params['spatial_dims'],
+                depths=model_params['depths'],
+                num_heads=model_params['num_heads'],
+                feature_size=model_params['feature_size'],
+                hovermaps=model_params['hovermaps'],
+                freeze_encoder=model_params['freeze_encoder'],
+                freeze_decoder_bin=model_params['freeze_decoder_bin'],
+            ).to(device)
+        else:
+            raise ValueError(f"Model {model_name} not implemented")
+
+    model_names = cfg['model']['name']
+    model_params = cfg['model']['params']
+    
+    if isinstance(model_names, list) and isinstance(model_params, list):
+        if len(model_names) != len(model_params):
+            raise ValueError("Length of model names and model params lists must be the same.")
+        models = [create_model(name, params) for name, params in zip(model_names, model_params)]
     else:
-        raise ValueError(f"Model {cfg['model']['name']} not implemented")
-    
+        models = [create_model(model_names, model_params)]
+
     if pretrained_path is not None:
-        model.load_state_dict(torch.load(pretrained_path)['model_state_dict'])
-        print(f"Model loaded from {pretrained_path}")
-    
-    model.eval()
-    
-    return model
+        if isinstance(pretrained_path, list):
+            for i, model_path in enumerate(pretrained_path):
+                models[i].load_state_dict(torch.load(model_path)['model_state_dict'])
+                print(f"Model {i+1} loaded from {model_path}")
+        else:
+            models[0].load_state_dict(torch.load(pretrained_path)['model_state_dict'])
+            print(f"Model loaded from {pretrained_path}")
+
+    for model in models:
+        model.eval()
+
+    if len(models) == 1:
+        return models[0]
+    else:
+        return models

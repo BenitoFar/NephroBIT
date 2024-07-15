@@ -258,12 +258,16 @@ def train(cfg, train_loader, val_loader, results_dir):
 
 
 def main(cfg):
+        
+    monai.config.print_config()
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    cfg = load_config(cfg)
     
     if cfg['wandb']['state']:
-        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
+        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-{('train_synthetic' if len(cfg['datadir'][0]) == 0 else 'train_synthetic_real')}-{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
         wandb.init(project=cfg['wandb']['project'], 
                 name=run_name, 
-                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
+                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{('train_synthetic' if len(cfg['datadir'][0]) == 0 else 'train_synthetic_real')}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
                 entity = cfg['wandb']['entity'],
                 save_code=True, 
                 reinit=cfg['wandb']['reinit'], 
@@ -271,35 +275,23 @@ def main(cfg):
                 config = cfg,
                     )
         
-    monai.config.print_config()
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-    cfg = load_config(cfg)
-    
     set_determinism(seed=cfg['seed'])
     seed_everything(cfg['seed'])
     
-    datadir = cfg['datadir']
-    
-    #get validation list files
-    if cfg['val_fold'] != 'validation_cohort':
-        datadir_val = os.path.join(datadir, f"fold_{cfg['val_fold']}")
-        data_list_val = prepare_data(datadir_val)
-        
-        #get train list files
-        data_list_train = []
-        for i in range(cfg['nfolds']):
-            if i != cfg['val_fold']:
-                datadir_train = os.path.join(datadir, f'fold_{i}')
-                datalist_fold_train = prepare_data(datadir_train)
-                data_list_train.extend(datalist_fold_train)
-    else:
-        #get train list files
+    if len(cfg['datadir'][0])>1:
         data_list_train_original = prepare_data(cfg['datadir'][0])
-        data_list_train_fake = prepare_data(cfg['datadir'][1])
+        print('Training the network with real and synthetic data')
+    else:
+        print('Pretraining the network with synthetic data')
+        
+    data_list_train_fake = prepare_data(cfg['datadir'][1])
+    #shuffle the list
+    if len(cfg['datadir'][0])==1: 
         data_list_train = data_list_train_original + data_list_train_fake
-        #shuffle the list
         random.shuffle(data_list_train)
-        data_list_val = prepare_data(cfg['datadir_val'])
+    else:
+        data_list_train = data_list_train_fake
+    data_list_val = prepare_data(cfg['datadir_val'])
         
     print('Number of training images:', len(data_list_train), 'Number of validation images:', len(data_list_val))
     train_transforms = get_transforms(cfg, 'train')
@@ -307,7 +299,7 @@ def main(cfg):
     
     print('Fold:', cfg['val_fold'])
     print('Number of training images by class:', Counter([data_list_train[i]['case_class'] for i in range(len(data_list_train))]))
-    print('Number of training REAL images by class:', Counter([data_list_train_original[i]['case_class'] for i in range(len(data_list_train_original))]))
+    if len(cfg['datadir'][0])>1: print('Number of training REAL images by class:', Counter([data_list_train_original[i]['case_class'] for i in range(len(data_list_train_original))]))
     print('Number of training FAKE images by class:', Counter([data_list_train_fake[i]['case_class'] for i in range(len(data_list_train_fake))]))
     # #select randomly data_list_train_fake elements in order to have the some total number of images for each class 
     # class_counts = Counter([data['case_class'] for data in data_list_train_fake])
@@ -328,7 +320,7 @@ def main(cfg):
     val_loader = DataLoader(val_dss, batch_size=cfg['training']['val_batch_size'], num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
     
     # check same train images
-    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'],  f"{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
+    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", (cfg['model']['name'] + "_pretrain_pix2pix_synt" if len(cfg['datadir'][0])==0 else cfg['model']['name'] + "_train_pix2pix_synt_real"), cfg['preprocessing']['image_preprocess'], f"{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
     os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
     
     check_loader = train_loader
@@ -349,7 +341,7 @@ if __name__ == "__main__":
     #define parser to pass the configuration file
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_train_Unet_noCV_pix2pix_aug.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_pretrain_Unet_noCV_pix2pix_aug.yaml")
     args = parser.parse_args()
     cfg = args.config
     

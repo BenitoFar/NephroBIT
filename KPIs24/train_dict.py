@@ -67,6 +67,7 @@ def train(cfg, train_loader, val_loader, results_dir):
     
     # create UNet, DiceLoss and Adam optimizer
     model = get_model(cfg, pretrained_path = None)
+    print('Number of parametets in the model:', sum(p.numel() for p in model.parameters() if p.requires_grad))
         
     if cfg['wandb']['state']: wandb.watch(model, log="all")
 
@@ -262,6 +263,18 @@ def main(cfg):
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
     cfg = load_config(cfg)
     
+    if cfg['wandb']['state']:
+        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
+        wandb.init(project=cfg['wandb']['project'], 
+                name=run_name, 
+                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
+                entity = cfg['wandb']['entity'],
+                save_code=True, 
+                reinit=cfg['wandb']['reinit'], 
+                resume=cfg['wandb']['resume'],
+                config = cfg,
+                    )
+        
     set_determinism(seed=cfg['seed'])
     seed_everything(cfg['seed'])
     
@@ -299,7 +312,7 @@ def main(cfg):
     val_loader = DataLoader(val_dss, batch_size=cfg['training']['val_batch_size'], num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
     
     # check same train images
-    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'],  f"{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
+    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'],  f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
     os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
     
     check_loader = train_loader
@@ -311,17 +324,6 @@ def main(cfg):
         print(f"image shape: {check_image.shape}, label shape: {check_label.shape}")
         show_image(check_image, check_label, None, os.path.join(results_fold_dir, f'train_images_examples', f'train_sample_{i}.png'))   
         
-    if cfg['wandb']['state']:
-        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-{('fold_' + cfg['val_fold'] if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
-        wandb.init(project=cfg['wandb']['project'], 
-                name=run_name, 
-                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
-                entity = cfg['wandb']['entity'],
-                save_code=True, 
-                reinit=cfg['wandb']['reinit'], 
-                resume=cfg['wandb']['resume'],
-                config = cfg,
-                    )
     
     train(cfg, train_loader, val_loader, results_fold_dir)
         
@@ -332,7 +334,7 @@ if __name__ == "__main__":
     #define parser to pass the configuration file
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_train_Unet_noCV.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_train_DynUNet_noCV.yaml")
     args = parser.parse_args()
     cfg = args.config
     

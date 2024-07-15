@@ -8,7 +8,7 @@ device_number: 1
 seed: 44
 ensemble: False
 nfolds: 3
-val_fold: 0
+val_fold: 2
 inference_type: 'validation'
 save_masks: True
 
