@@ -11,7 +11,7 @@ nfolds: 'no'
 val_fold: 'validation_cohort'
 
 preprocessing:
-  image_preprocess: 'CropPosNeg-ResizeLargePatch-FlipRot' #'Resize', 'CropPosNeg-ResizeLargePatch-FlipRot', 'CropPosNeg'
+  image_preprocess: 'CropPosNeg-ResizeLargerPatch' #'Resize', 'CropPosNeg-ResizeLargePatch-FlipRot', 'CropPosNeg'
   roi_size: [512, 512]
   num_samples_per_image: 4
 
@@ -57,7 +57,7 @@ model:
 
 # Wandb configuration
 wandb:
-  state: true
+  state: True
   project: 'nefrobit'
   entity: 'nefrobit'
   reinit: true

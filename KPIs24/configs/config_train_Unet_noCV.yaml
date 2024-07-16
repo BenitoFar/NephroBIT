@@ -4,14 +4,14 @@ results_dir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/"
 datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/"
 datadir_val: "/mnt/atlas/data_KPIs/data/KPIs24_Validation_Data/Task1_patch_level/validation/"
 
-device_number: 0
+device_number: 1
 seed: 44
 resume_training: False
 nfolds: 'no'
 val_fold: 'validation_cohort'
 
 preprocessing:
-  image_preprocess: 'CropPosNeg' #'Resize', 
+  image_preprocess: 'CropPosNeg-ResizeLargerPatch-FlipRot' #'Resize', 
   roi_size: [512, 512]
   num_samples_per_image: 4
 
@@ -22,7 +22,7 @@ training:
   train_batch_size: 12
   val_batch_size: 1
   num_workers: 4
-  cache_rate: 0.5
+  cache_rate: 0.2
   loss: DiceCELoss
   loss_params: {
     'lambda_dice': 1.0,
@@ -59,7 +59,7 @@ model:
 
 # Wandb configuration
 wandb:
-  state: true
+  state: false
   project: 'nefrobit'
   entity: 'nefrobit'
   reinit: true

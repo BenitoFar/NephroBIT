@@ -31,9 +31,13 @@ from monai.transforms import (
     MeanEnsembled,
     Activationsd,
     AsDiscreted,
-    RandFlipd, 
-    RandRotate90d
 )
+from scipy.ndimage.morphology import binary_erosion, binary_dilation
+from skimage.morphology import binary_opening, binary_closing
+from skimage.measure import label, regionprops
+from monai.utils import convert_to_numpy
+from monai.transforms import MapTransform
+from monai.config import KeysCollection
 
 def ensemble_evaluate(cfg, post_transforms, test_loader, models):
     evaluator = EnsembleEvaluator(
@@ -53,6 +57,71 @@ def ensemble_evaluate(cfg, post_transforms, test_loader, models):
     evaluator.run()
     return evaluator
 
+
+class PostProcessLabels(MapTransform):
+    """
+    Remove small connected components from the prediction using binary morphology.
+
+    Args:
+        min_size (int): minimum size to keep the component.
+        connectivity (int): the connectivity for the connected component.
+        keys (KeysCollection): Keys of the data dictionary to apply the transform on.
+    """
+    
+    def __init__(
+        self,
+        min_size : int,
+        operations: list, 
+        keys: KeysCollection,
+    ):
+        super().__init__(keys, allow_missing_keys=False)
+        self.min_size = min_size
+        self.operations = operations
+    def __call__(self, data):
+        d = dict(data)
+
+        if len(self.keys) > 1:
+            print("Only 'pred' key is supported, more than 1 key was found")
+            return None
+
+        for key in self.keys:
+            pred = d[key] if isinstance(d[key], torch.Tensor) else torch.from_numpy(d[key])
+
+            
+            pred_array = pred.cpu().numpy().squeeze()
+
+            if 'remove_small_components' in self.operations:
+                # Calculate connected components
+                connected_components = label(pred_array)
+
+                #get labels of the components touching the borders 
+                border_components_labels = set(connected_components[0, :].tolist() + connected_components[-1, :].tolist() + connected_components[:, 0].tolist() + connected_components[:, -1].tolist())
+                
+                # Calculate region properties of the connected components
+                props = regionprops(connected_components)
+
+                # Remove components with less than 100 pixels
+                for prop in props:
+                    if prop.area < self.min_size:
+                        if prop.label not in border_components_labels or prop.area < 20:
+                            connected_components[connected_components == prop.label] = 0
+                pred_array = connected_components
+
+            # You can use binary morphology operations or any other method of your choice here
+            if 'closing'in self.operations:
+                pred = binary_closing(connected_components, selem=np.ones((3, 3)))
+            if 'opening' in self.operations:
+                pred = binary_opening(pred, selem=np.ones((3, 3)))
+            
+            # Convert back to torch.Tensor
+            pred = torch.from_numpy(connected_components).to(pred.device)
+            pred = pred.unsqueeze(0).unsqueeze(0)
+
+            # You can use binary morphology operations or any other method of your choice here
+            d[key] = pred if isinstance(d[key], torch.Tensor) else convert_to_numpy(pred)
+                        
+        return d
+    
 def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
     device = torch.device(f"cuda:{cfg['device_number']}" if torch.cuda.is_available() else "cpu")
     set_determinism(seed=cfg['seed'])
@@ -72,18 +141,32 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
             results_dir_masks = os.path.join(results_dir, "predicted_masks_ensemble")
             os.makedirs(results_dir_masks, exist_ok=True)
         
-        val_post_transforms = Compose(
-            [   EnsureTyped(keys=[f"pred{i}" for i in range(len(cfg['models_list']))]),
-                MeanEnsembled(
-                    keys=[f"pred{i}" for i in range(len(cfg['models_list']))],
-                    output_key="pred",
-                    weights=[1 for i in range(len(cfg['models_list']))],
-                ),
-                Activationsd(keys= 'pred', sigmoid=True), 
-                AsDiscreted(keys= 'pred', threshold=0.5),
-                ]
-            )
-        
+        if cfg['postprocessing']['status']:
+            val_post_transforms = Compose(
+                [   EnsureTyped(keys=[f"pred{i}" for i in range(len(cfg['models_list']))]),
+                    MeanEnsembled(
+                        keys=[f"pred{i}" for i in range(len(cfg['models_list']))],
+                        output_key="pred",
+                        weights=[1 for i in range(len(cfg['models_list']))],
+                    ),
+                    Activationsd(keys= 'pred', sigmoid=True), 
+                    AsDiscreted(keys= 'pred', threshold=0.5),
+                    PostProcessLabels(keys='pred', min_size=cfg['postprocessing']['min_size'], operations=cfg['postprocessing']['operations']), #cfg['postprocessing']['min_size']
+                    ]
+                )
+        else:
+            val_post_transforms = Compose(
+                [   EnsureTyped(keys=[f"pred{i}" for i in range(len(cfg['models_list']))]),
+                    MeanEnsembled(
+                        keys=[f"pred{i}" for i in range(len(cfg['models_list']))],
+                        output_key="pred",
+                        weights=[1 for i in range(len(cfg['models_list']))],
+                    ),
+                    Activationsd(keys= 'pred', sigmoid=True), 
+                    AsDiscreted(keys= 'pred', threshold=0.5),
+                    ]
+                )
+
         scores = ensemble_evaluate(cfg, val_post_transforms, val_loader, models)
             
         print("Metrics of ensemble (MEAN): {}".format(scores.state.metrics))
@@ -104,12 +187,21 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
         dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
         
         #define post transforms
-        val_post_transforms = Compose(
-            [
-                Activations(sigmoid=True), 
-                AsDiscrete(threshold=0.5),
-                ]
-            )
+        if cfg['postprocessing']['status']:
+            val_post_transforms = Compose(
+                [  
+                    Activationsd(keys='pred',sigmoid=True), 
+                    AsDiscreted(keys='pred',threshold=0.5),
+                    PostProcessLabels(keys='pred', min_size=cfg['postprocessing']['min_size'], operations=cfg['postprocessing']['operations']), #cfg['postprocessing']['min_size']
+                    ]
+                )
+        else:
+            val_post_transforms = Compose(
+                [  
+                    Activationsd(keys='pred',sigmoid=True), 
+                    AsDiscreted(keys='pred',threshold=0.5),
+                    ]
+                )
     
         with torch.no_grad():
             val_images = None
@@ -149,7 +241,7 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                     val_outputs = val_outputs_orig
                 
                 #apply post transforms
-                val_outputs = [val_post_transforms(i) for i in decollate_batch(val_outputs)]
+                val_outputs = [val_post_transforms({'pred': val_outputs})['pred'] for i in decollate_batch(val_outputs)]
                     
                 # compute metric for current iteration
                 actual_dice = dice_metric(y_pred=val_outputs, y=val_labels)

@@ -11,6 +11,7 @@ nfolds: 'no'
 val_fold: 'validation_cohort'
 
 preprocessing:
+  balance_classes: False
   image_preprocess: 'PatchesPix2Pix' #'Resize', 
   roi_size: [512, 512]
   # num_samples_per_image: 4

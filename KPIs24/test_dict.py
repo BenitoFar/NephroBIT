@@ -50,13 +50,15 @@ def main(cfg):
                                 ('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort'), 
                                 cfg['inference_type'], 
                                 cfg['validation']['sliding_window_inference']['mode'] + '_windowing',
-                                ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"))
+                                ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"),
+                                ('post_processing' if cfg['postprocessing']['status'] else 'no_post_processing'))
     else:
         results_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'], 
                                 ("ensembleCV" if cfg['ensemble'] else f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"), 
                                 cfg['inference_type'], 
                                 cfg['validation']['sliding_window_inference']['mode'] + '_windowing',
-                                ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"))
+                                ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"),
+                                ('post_processing' if cfg['postprocessing']['status'] else 'no_post_processing'))
     
     os.makedirs(results_dir, exist_ok=True)
     
@@ -78,7 +80,7 @@ def main(cfg):
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_test_ensemble.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_test_DynUNet_noCV.yaml")
     args = parser.parse_args()
     cfg = args.config
     main(cfg)
