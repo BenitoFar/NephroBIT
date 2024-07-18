@@ -4,6 +4,7 @@ import torch
 import torch.distributed as dist
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import monai
 import argparse
 from monai.metrics import DiceMetric
@@ -18,6 +19,7 @@ import wandb
 from collections import Counter
 from utilites import seed_everything, prepare_data, load_config, save_mask, get_model, get_transforms
 from evaluate import evaluate_func
+import itertools
 
 def main(cfg):
     monai.config.print_config()
@@ -64,25 +66,51 @@ def main(cfg):
     
     os.makedirs(results_dir, exist_ok=True)
     
-    #save cfg in this folder
-    with open(os.path.join(results_dir, 'config.yaml'), 'w') as file:
-        yaml.dump(cfg, file)
+    # Define the sets of values you want to try for each parameter
+    param_grid = {
+        'min_size' : [100, 200, 300, 400, 500, 1000],
+        'kernel_size' : [10, 20, 50]
+    }
+
+    # Generate all combinations of parameter values
+    param_combinations = list(itertools.product(*param_grid.values()))
+
+    #create dataframe to save the results
+    results_df = pd.DataFrame(columns=['min_size', 'kernel_size', 'dice'])
+    # Iterate over all combinations of parameter values
+    for param_values in param_combinations:
+        if param_values[0] == 100 and param_values[1] == 10:
+            continue
+        # Create a copy of the original cfg dictionary
+        cfg_copy = cfg.copy()
+
+        # Update the parameters in the cfg copy
+        cfg_copy['postprocessing']['operations']['remove_small_components']['min_size'] = param_values[0]
+        cfg_copy['postprocessing']['operations']['closing']['kernel_size'] = param_values[1]
+        cfg_copy['postprocessing']['operations']['opening']['kernel_size'] = param_values[1]
+            
+        #redifine the results_dir to save the results of each combination of parameters
+        results_dir_actual = os.path.join(results_dir, f"remove_small_components_{cfg_copy['postprocessing']['operations']['remove_small_components']['min_size']}_closing_{cfg_copy['postprocessing']['operations']['closing']['kernel_size']}_opening_{cfg_copy['postprocessing']['operations']['opening']['kernel_size']}")
+        os.makedirs(results_dir_actual, exist_ok=True)
+
+        #save cfg in this folder
+        with open(os.path.join(results_dir, 'config.yaml'), 'w') as file:
+            yaml.dump(cfg_copy, file)
+        
+        df = evaluate_func(cfg_copy, val_loader, results_dir_actual, save_masks=cfg['save_masks'])
+        results_df = pd.concat([results_df, df], ignore_index=True)
+
+    results_df.to_csv(os.path.join(results_dir, 'results_postprocessing_hyperparameters_selection.csv'), index=False)
+    mean_dice_by_class = results_df.groupby('class')['dice'].mean()
+    mean_dice = results_df.mean()
+    class_count = df.groupby('class')['dice'].count()
     
-    # if cfg['wandb']['state']:
-    #     run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-fold{cfg['val_fold']:02}-inference-{cfg['inference_type']}_{cfg['validation']['sliding_window_inference']['mode']}_windowing"
-    #     wandb.init(project=cfg['wandb']['project'], 
-    #             name=run_name, 
-    #             group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
-    #             entity = cfg['wandb']['entity'],
-    #             save_code=True, 
-    #             reinit=cfg['wandb']['reinit'], 
-    #             resume=cfg['wandb']['resume'],
-    #             config = cfg,
-    #                 )
-    
-    evaluate_func(cfg, val_loader, results_dir, save_masks=cfg['save_masks'])
-    
-    # if cfg['wandb']['state']: wandb.finish()
+    print('/n')
+    print(f'Parameters combination {param_values[0]} - {param_values[1]}')
+    print(f' Mean DICE: {mean_dice}')
+    print("Mean dice by class: ", mean_dice_by_class, '- N = ', len(class_count))
+    print("Count by class: ", class_count)
+    print('/n')
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

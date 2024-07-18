@@ -31,18 +31,23 @@ from monai.transforms import (
     RandGaussianNoised
 )
 import monai
+from monai.data.image_writer import PILWriter
 from skimage import measure
 from PIL import Image
 import cv2
 
-def save_image_jpg(image, output_path, mode = 'RGB'):
+def save_image(image, output_path, mode = 'RGB'):
     img = Image.fromarray(image, mode)
     img.save(output_path)
     
-def save_mask_jpg(image, output_path):
-    # img = Image.fromarray(image, 'L')
-    # img.save(output_path)
-    pass
+def save_mask(image, output_path):
+    # writer = PILWriter(np.uint8)
+    # # image = np.expand_dims(image, axis=0)
+    # writer.set_data_array(image, channel_dim=None)
+    # writer.write(output_path, verbose=False)
+        
+    cv2.imwrite(output_path, np.moveaxis(image, 0, 1))
+    # pass
 
 def show_image(image, label, predictions = None, filename = None):
     # print(f"Image: {image.shape}; Label: {label.shape}")

@@ -15,7 +15,7 @@ from monai.utils import set_determinism
 import wandb 
 from torchvision.transforms.functional import rotate
 from torchvision.transforms import RandomHorizontalFlip, RandomVerticalFlip
-from utilites import seed_everything, prepare_data, load_config, save_mask_jpg, get_model, get_transforms
+from utilites import seed_everything, prepare_data, load_config, save_mask, get_model, get_transforms
 import pandas as pd
 from monai.transforms.utils import allow_missing_keys_mode
 from monai.transforms.utils_pytorch_numpy_unification import mode, stack
@@ -70,12 +70,10 @@ class PostProcessLabels(MapTransform):
     
     def __init__(
         self,
-        min_size : int,
         operations: list, 
         keys: KeysCollection,
     ):
         super().__init__(keys, allow_missing_keys=False)
-        self.min_size = min_size
         self.operations = operations
     def __call__(self, data):
         d = dict(data)
@@ -90,7 +88,7 @@ class PostProcessLabels(MapTransform):
             
             pred_array = pred.cpu().numpy().squeeze()
 
-            if 'remove_small_components' in self.operations:
+            if self.operations['remove_small_components']['status']:
                 # Calculate connected components
                 connected_components = label(pred_array)
 
@@ -102,19 +100,21 @@ class PostProcessLabels(MapTransform):
 
                 # Remove components with less than 100 pixels
                 for prop in props:
-                    if prop.area < self.min_size:
+                    if prop.area < self.operations['remove_small_components']['min_size']:
                         if prop.label not in border_components_labels or prop.area < 20:
                             connected_components[connected_components == prop.label] = 0
                 pred_array = connected_components
+                pred_array[pred_array > 0] = 1
 
             # You can use binary morphology operations or any other method of your choice here
-            if 'closing'in self.operations:
-                pred = binary_closing(connected_components, selem=np.ones((3, 3)))
-            if 'opening' in self.operations:
-                pred = binary_opening(pred, selem=np.ones((3, 3)))
+            if self.operations['closing']['status']:
+                pred_array = binary_closing(pred_array, footprint =np.ones((self.operations['closing']['kernel_size'], self.operations['closing']['kernel_size'])))
+                           
+            if self.operations['opening']['status']:
+                pred_array = binary_opening(pred_array, footprint =np.ones((self.operations['opening']['kernel_size'], self.operations['opening']['kernel_size'])))
             
             # Convert back to torch.Tensor
-            pred = torch.from_numpy(connected_components).to(pred.device)
+            pred = torch.from_numpy(pred_array).to(pred.device)
             pred = pred.unsqueeze(0).unsqueeze(0)
 
             # You can use binary morphology operations or any other method of your choice here
@@ -131,16 +131,17 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
     #save metrics to dataframe that has columns id and dice
     df = pd.DataFrame(columns=['id', 'class', 'id_patch', 'dice'])
     
+    if save_masks: 
+        results_dir_masks = os.path.join(results_dir, "predicted_masks")
+        os.makedirs(results_dir_masks, exist_ok=True)
+            
     if cfg['ensemble']:
         #load all models
         models = []
         models = get_model(cfg, cfg['models_list'])
         
         #evaluate each model 
-        if save_masks: 
-            results_dir_masks = os.path.join(results_dir, "predicted_masks_ensemble")
-            os.makedirs(results_dir_masks, exist_ok=True)
-        
+    
         if cfg['postprocessing']['status']:
             val_post_transforms = Compose(
                 [   EnsureTyped(keys=[f"pred{i}" for i in range(len(cfg['models_list']))]),
@@ -151,7 +152,7 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                     ),
                     Activationsd(keys= 'pred', sigmoid=True), 
                     AsDiscreted(keys= 'pred', threshold=0.5),
-                    PostProcessLabels(keys='pred', min_size=cfg['postprocessing']['min_size'], operations=cfg['postprocessing']['operations']), #cfg['postprocessing']['min_size']
+                    PostProcessLabels(keys='pred', operations=cfg['postprocessing']['operations']), #cfg['postprocessing']['min_size']
                     ]
                 )
         else:
@@ -180,10 +181,7 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
         scores = scores.state.metrics['test_mean_dice']
     else:
         model = get_model(cfg, os.path.join(cfg['modeldir'], f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}", "best_metric_model.pth"))
-        if save_masks:
-            results_dir_masks = os.path.join(results_dir, f"predicted_masks_fold{cfg['val_fold']}")
-            os.makedirs(results_dir_masks, exist_ok=True)
-       
+        
         dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
         
         #define post transforms
@@ -192,7 +190,7 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                 [  
                     Activationsd(keys='pred',sigmoid=True), 
                     AsDiscreted(keys='pred',threshold=0.5),
-                    PostProcessLabels(keys='pred', min_size=cfg['postprocessing']['min_size'], operations=cfg['postprocessing']['operations']), #cfg['postprocessing']['min_size']
+                    PostProcessLabels(keys='pred', operations=cfg['postprocessing']['operations']), #cfg['postprocessing']['min_size']
                     ]
                 )
         else:
@@ -246,7 +244,7 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                 # compute metric for current iteration
                 actual_dice = dice_metric(y_pred=val_outputs, y=val_labels)
                 #save prediction mask as jpg
-                if save_masks: save_mask_jpg(val_outputs[0].cpu().numpy().squeeze()*255, os.path.join(results_dir_masks, f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.jpg'))
+                if save_masks: save_mask((val_outputs[0].cpu().numpy().squeeze()*255).astype('uint8'), os.path.join(results_dir_masks, f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.png'))
                 df.loc[idx_val, 'id'] = val_data["label_path"][0].split("/")[-3]
                 df.loc[idx_val, 'id_patch'] = val_data["label_path"][0].split("/")[-1].split(".jpg")[0]
                 df.loc[idx_val, 'class'] = val_data["label_path"][0].split("/")[-4]
@@ -276,5 +274,6 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
     if cfg['wandb']['state']: 
         wandb.log({"best_dice_validation_metric": dice_metric})
         wandb.finish()
-           
+    
+    return df     
 

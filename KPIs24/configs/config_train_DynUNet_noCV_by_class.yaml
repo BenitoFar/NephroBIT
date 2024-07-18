@@ -9,9 +9,10 @@ seed: 44
 resume_training: False
 nfolds: 'no'
 val_fold: 'validation_cohort'
+class: ['56Nx']
 
 preprocessing:
-  image_preprocess: 'CropPosNeg-ResizeLargerPatch-FlipRot' #'Resize', 'CropPosNeg-ResizeLargePatch-FlipRot', 'CropPosNeg'
+  image_preprocess: 'CropPosNeg-ResizeLargerPatch' #'Resize', 'CropPosNeg-ResizeLargePatch-FlipRot', 'CropPosNeg'
   roi_size: [512, 512]
   num_samples_per_image: 4
 

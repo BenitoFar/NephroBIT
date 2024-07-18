@@ -10,11 +10,26 @@ ensemble: False
 nfolds: 'no'
 val_fold: 'validation_cohort'
 inference_type: 'test'
+save_masks: False
 
 preprocessing:
   image_preprocess: 'CropPosNeg' #'Resize', 
   roi_size: [512, 512]
   num_samples_per_image: 4
+
+postprocessing:
+  'status': True
+  'threshold': 0.5
+  'operations': {'remove_small_components':{  
+                              'status': True,
+                              'min_size': 100}, 
+                  'closing':{
+                              'status': True,
+                              'kernel_size': 10}, 
+                  'opening':{
+                              'status': True,
+                              'kernel_size': 10},
+                              }
 
 # Training configuration
 validation:
