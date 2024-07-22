@@ -52,7 +52,7 @@ def main(cfg):
                                     cfg['validation']['sliding_window_inference']['mode'] + '_windowing',
                                     ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"),
                                     ('post_processing' if cfg['postprocessing']['status'] else 'no_post_processing'),
-                                    ("_".join([l for l in cfg['postprocessing']['operations']]) if cfg['postprocessing']['status'] else ''))
+                                    ("_".join([l for l in cfg['postprocessing']['operations'] if cfg['postprocessing']['operations'][l]['status']]) if cfg['postprocessing']['status'] else ''))
     else:
         results_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'], 
                                     ("ensembleCV" if cfg['ensemble'] else f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"), 
@@ -60,7 +60,7 @@ def main(cfg):
                                     cfg['validation']['sliding_window_inference']['mode'] + '_windowing',
                                     ("TTA" if cfg['validation']['timetestaugmentation']['status'] else "noTTA"),
                                     ('post_processing' if cfg['postprocessing']['status'] else 'no_post_processing'),
-                                    ("_".join([l for l in cfg['postprocessing']['operations']]) if cfg['postprocessing']['status'] else ''), )
+                                    ("_".join([l for l in cfg['postprocessing']['operations'].keys() if cfg['postprocessing']['operations'][l]['status']]) if cfg['postprocessing']['status'] else ''), )
     
     os.makedirs(results_dir, exist_ok=True)
     

@@ -54,7 +54,7 @@ def main(cfg):
     cfg = load_config(cfg)
     
     if cfg['wandb']['state']:
-        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
+        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{'_'.join([c for c in cfg['class']])}-{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
         wandb.init(project=cfg['wandb']['project'], 
                 name=run_name, 
                 group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
@@ -105,7 +105,7 @@ def main(cfg):
     val_loader = DataLoader(val_dss, batch_size=cfg['training']['val_batch_size'], num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
     
     # check same train images
-    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'],  f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
+    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'] + '_'.join([c for c in cfg['class']]), cfg['preprocessing']['image_preprocess'],  f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
     os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
     
     check_loader = train_loader

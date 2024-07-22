@@ -100,7 +100,8 @@ def main(cfg):
         df = evaluate_func(cfg_copy, val_loader, results_dir_actual, save_masks=cfg['save_masks'])
         results_df = pd.concat([results_df, df], ignore_index=True)
 
-    results_df.to_csv(os.path.join(results_dir, 'results_postprocessing_hyperparameters_selection.csv'), index=False)
+        results_df.to_csv(os.path.join(results_dir, 'results_postprocessing_hyperparameters_selection.csv'), index=False)
+        
     mean_dice_by_class = results_df.groupby('class')['dice'].mean()
     mean_dice = results_df.mean()
     class_count = df.groupby('class')['dice'].count()

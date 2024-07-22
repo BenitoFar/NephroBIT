@@ -38,6 +38,7 @@ from skimage.measure import label, regionprops
 from monai.utils import convert_to_numpy
 from monai.transforms import MapTransform
 from monai.config import KeysCollection
+from post_processing import crf
 
 def ensemble_evaluate(cfg, post_transforms, test_loader, models):
     evaluator = EnsembleEvaluator(
@@ -83,9 +84,9 @@ class PostProcessLabels(MapTransform):
             return None
 
         for key in self.keys:
+            
             pred = d[key] if isinstance(d[key], torch.Tensor) else torch.from_numpy(d[key])
 
-            
             pred_array = pred.cpu().numpy().squeeze()
 
             if self.operations['remove_small_components']['status']:
@@ -113,6 +114,9 @@ class PostProcessLabels(MapTransform):
             if self.operations['opening']['status']:
                 pred_array = binary_opening(pred_array, footprint =np.ones((self.operations['opening']['kernel_size'], self.operations['opening']['kernel_size'])))
             
+            if self.operations['crf']['status']:
+                pred_array = crf(d['image'], pred_array)
+                
             # Convert back to torch.Tensor
             pred = torch.from_numpy(pred_array).to(pred.device)
             pred = pred.unsqueeze(0).unsqueeze(0)
@@ -190,7 +194,7 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                 [  
                     Activationsd(keys='pred',sigmoid=True), 
                     AsDiscreted(keys='pred',threshold=0.5),
-                    PostProcessLabels(keys='pred', operations=cfg['postprocessing']['operations']), #cfg['postprocessing']['min_size']
+                    PostProcessLabels(keys=['pred'], operations=cfg['postprocessing']['operations']), #cfg['postprocessing']['min_size']
                     ]
                 )
         else:
@@ -237,12 +241,13 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                     val_outputs = val_outputs.mean(0, keepdim = True) #mode(val_outputs, 0) or sum(val_outputs)/len(val_outputs)
                 else:
                     val_outputs = val_outputs_orig
-                
-                #apply post transforms
-                val_outputs = [val_post_transforms({'pred': val_outputs})['pred'] for i in decollate_batch(val_outputs)]
                     
+                #apply post transforms
+                val_outputs = [val_post_transforms({'pred': val_outputs , 'image': val_images})['pred'] for i in decollate_batch(val_outputs)]
+                                
                 # compute metric for current iteration
                 actual_dice = dice_metric(y_pred=val_outputs, y=val_labels)
+                
                 #save prediction mask as jpg
                 if save_masks: save_mask((val_outputs[0].cpu().numpy().squeeze()*255).astype('uint8'), os.path.join(results_dir_masks, f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.png'))
                 df.loc[idx_val, 'id'] = val_data["label_path"][0].split("/")[-3]

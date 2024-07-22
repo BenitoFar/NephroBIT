@@ -546,6 +546,7 @@ def get_model(cfg, pretrained_path=None):
                 upsample_kernel_size=strides[1:],
                 norm_name="instance",
                 deep_supervision=model_params['deep_supervision'],
+                deep_supr_num = model_params['deep_supr_num'],
                 res_block=model_params['res_block'],
             ).to(device)
         elif model_name == "HoVerSwinUNETR":

@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from monai.utils import set_determinism
 import wandb 
 import random
-from utilites import seed_everything, save_mask_jpg, show_image, get_model
+from utilites import seed_everything, save_mask, show_image, get_model
 torch.autograd.set_detect_anomaly(True)
 
 def train(cfg, train_loader, val_loader, results_dir):
@@ -110,8 +110,11 @@ def train(cfg, train_loader, val_loader, results_dir):
             outputs = model(inputs)
             # if idx_img < 10:
             #     show_image(inputs[0].cpu().numpy(), outputs[0].cpu().detach().numpy(), None, os.path.join(results_images_dir, f'train_outputs_{idx_img}_{epoch}_{step}.png'))
-                
-            loss = loss_function(outputs, labels)
+            if cfg['model']['name'] == 'DynUNet' and cfg['model']['params']['deep_supervision']:
+                outputs = torch.unbind(outputs, dim=1)
+                loss = sum([0.5**i * loss_function(output, labels) for i, output in enumerate(outputs)]) #can be passed also a weigth for each output feature map
+            else:
+                loss = loss_function(outputs, labels)
             loss.backward()
             optimizer.step()
             # step scheduler after each epoch (cosine decay)
@@ -187,7 +190,7 @@ def train(cfg, train_loader, val_loader, results_dir):
                 
                 metric_values.append(metric)
                 
-                if metric > best_metric:
+                if metric > best_metric: #should it be >=?
                     best_metric = metric
                     best_metric_epoch = epoch + 1
                     torch.save({

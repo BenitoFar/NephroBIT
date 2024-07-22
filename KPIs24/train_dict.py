@@ -42,7 +42,7 @@ import matplotlib.pyplot as plt
 from monai.utils import set_determinism
 import wandb 
 import random
-from utilites import seed_everything, prepare_data, load_config, save_mask_jpg, show_image, get_transforms, get_model
+from utilites import seed_everything, prepare_data, load_config, save_mask, show_image, get_transforms, get_model
 from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
 from models import train
 torch.autograd.set_detect_anomaly(True)
@@ -265,10 +265,10 @@ def main(cfg):
     cfg = load_config(cfg)
     
     if cfg['wandb']['state']:
-        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}-{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
+        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name'] + ('deep_supervision' if cfg['model']['name'] == 'DynUNet' and cfg['model']['params']['deep_supervision'] else '')}-{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
         wandb.init(project=cfg['wandb']['project'], 
                 name=run_name, 
-                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
+                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name'] + ('deep_supervision' if cfg['model']['name'] == 'DynUNet' and cfg['model']['params']['deep_supervision'] else '')}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
                 entity = cfg['wandb']['entity'],
                 save_code=True, 
                 reinit=cfg['wandb']['reinit'], 
@@ -313,7 +313,7 @@ def main(cfg):
     val_loader = DataLoader(val_dss, batch_size=cfg['training']['val_batch_size'], num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
     
     # check same train images
-    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'], cfg['preprocessing']['image_preprocess'],  f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
+    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'] + ('deep_supervision' if cfg['model']['name'] == 'DynUNet' and cfg['model']['params']['deep_supervision'] else ''), cfg['preprocessing']['image_preprocess'],  f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
     os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
     
     check_loader = train_loader
@@ -335,7 +335,7 @@ if __name__ == "__main__":
     #define parser to pass the configuration file
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_train_Unet_noCV.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_train_DynUNet_noCV.yaml")
     args = parser.parse_args()
     cfg = args.config
     

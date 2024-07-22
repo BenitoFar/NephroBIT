@@ -11,7 +11,7 @@ nfolds: 'no'
 val_fold: 'validation_cohort'
 
 preprocessing:
-  image_preprocess: 'CropPosNeg-ResizeLargerPatch-FlipRot' #'Resize', 'CropPosNeg-ResizeLargePatch-FlipRot', 'CropPosNeg'
+  image_preprocess: 'CropPosNeg-ResizeLargerPatch' #'Resize', 'CropPosNeg-ResizeLargePatch-FlipRot', 'CropPosNeg'
   roi_size: [512, 512]
   num_samples_per_image: 4
 
@@ -36,7 +36,8 @@ model:
     'in_channels': 3,
     'spatial_dims': 2,
     'out_channels': 1,
-    'deep_supervision': False,
+    'deep_supervision': True,
+    'deep_supr_num': 2,
     'res_block': True,
   }
   optimizer: {
