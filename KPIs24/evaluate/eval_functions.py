@@ -19,7 +19,7 @@ from utilites import seed_everything, prepare_data, load_config, save_mask, get_
 import pandas as pd
 from monai.transforms.utils import allow_missing_keys_mode
 from monai.transforms.utils_pytorch_numpy_unification import mode, stack
-from monai.metrics import DiceMetric
+from monai.metrics import DiceMetric, GeneralizedDiceScore, HausdorffDistanceMetric
 from monai.transforms import Compose, Activations, AsDiscrete, SaveImage
 from monai.inferers import sliding_window_inference
 from monai.data import decollate_batch, TestTimeAugmentation
@@ -49,7 +49,7 @@ def ensemble_evaluate(cfg, post_transforms, test_loader, models):
         inferer=SlidingWindowInferer(roi_size=cfg['preprocessing']['roi_size'], sw_batch_size=1, mode= cfg['validation']['sliding_window_inference']['mode'], progress = True),
         postprocessing=post_transforms,
         key_val_metric={"test_mean_dice": MeanDice(
-                                                    include_background=True,
+                                                    include_background=cfg['validation']['dice_include_background'],
                                                     output_transform=from_engine(["pred", "label"]),
                                                     reduction="mean", 
                                                     save_details = True)
@@ -133,7 +133,7 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
     progress = open(results_dir + '/progress_eval.txt', 'w')
     
     #save metrics to dataframe that has columns id and dice
-    df = pd.DataFrame(columns=['id', 'class', 'id_patch', 'dice'])
+    df = pd.DataFrame(columns=['id', 'class', 'id_patch', 'dice', 'hausdorff_distance'])
     
     if save_masks: 
         results_dir_masks = os.path.join(results_dir, "predicted_masks")
@@ -186,7 +186,9 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
     else:
         model = get_model(cfg, os.path.join(cfg['modeldir'], f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}", "best_metric_model.pth"))
         
-        dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
+        dice_metric = DiceMetric(include_background=cfg['validation']['dice_include_background'], reduction="mean", get_not_nans=False)
+        
+        hausdorff_distance_metric = HausdorffDistanceMetric(include_background=cfg['validation']['dice_include_background'], reduction="mean")
         
         #define post transforms
         if cfg['postprocessing']['status']:
@@ -241,12 +243,19 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                     val_outputs = val_outputs.mean(0, keepdim = True) #mode(val_outputs, 0) or sum(val_outputs)/len(val_outputs)
                 else:
                     val_outputs = val_outputs_orig
-                    
+                
+                #save prediction probabilies numpy array as npy file
+                if cfg['save_probabilities']: 
+                    os.makedirs(os.path.join(results_dir, "predicted_probabilities"), exist_ok=True)
+                    np.save(os.path.join(results_dir, "predicted_probabilities", f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.npy'), val_outputs.cpu().numpy().squeeze())
+                
                 #apply post transforms
                 val_outputs = [val_post_transforms({'pred': val_outputs , 'image': val_images})['pred'] for i in decollate_batch(val_outputs)]
                                 
                 # compute metric for current iteration
                 actual_dice = dice_metric(y_pred=val_outputs, y=val_labels)
+
+                actual_hausdorff_distance = hausdorff_distance_metric(y_pred=val_outputs[0], y=val_labels)
                 
                 #save prediction mask as jpg
                 if save_masks: save_mask((val_outputs[0].cpu().numpy().squeeze()*255).astype('uint8'), os.path.join(results_dir_masks, f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.png'))
@@ -254,10 +263,15 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                 df.loc[idx_val, 'id_patch'] = val_data["label_path"][0].split("/")[-1].split(".jpg")[0]
                 df.loc[idx_val, 'class'] = val_data["label_path"][0].split("/")[-4]
                 df.loc[idx_val, 'dice'] = actual_dice.cpu().numpy().squeeze()
+                
+                df.loc[idx_val, 'hausdorff_distance'] = actual_hausdorff_distance.cpu().numpy().squeeze()
                 progress.write("Dice of image {}: {} \n".format(val_data["label_path"][0].split("/")[-1].split(".jpg")[0], actual_dice.cpu().numpy().squeeze()))
                 
             # aggregate the final mean dice result
             scores = dice_metric.aggregate().item()
+            
+            scores_hausdorff = hausdorff_distance_metric.aggregate().item()
+            
             # reset the status for next validation round
             dice_metric.reset()
 
@@ -267,6 +281,9 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
     print("Metric of fold {}: {}".format(cfg['val_fold'], scores)) 
     progress.write("Metric of fold {}: {} \n".format(cfg['val_fold'], scores))  
     
+    print("Hausdorff Distance of fold {}: {}".format(cfg['val_fold'], scores_hausdorff))
+    progress.write("Hausdorff Distance of fold {}: {} \n".format(cfg['val_fold'], scores_hausdorff))
+    
     mean_dice_by_class = df.groupby('class')['dice'].mean()
     # Print mean dice by class and count in progress
     class_count = df.groupby('class')['dice'].count()
@@ -274,6 +291,12 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
     print("Count by class: ", class_count)
     
     progress.write("Mean dice by class: {}".format(mean_dice_by_class))
+    
+    mean_hausdorff_distance_by_class = df.groupby('class')['hausdorff_distance'].mean()
+    class_count = df.groupby('class')['hausdorff_distance'].count()
+    print("Mean hausdorff distance by class: ", mean_hausdorff_distance_by_class, '- N = ', len(class_count))
+    progress.write("Mean hausdorff distance by class: {}".format(mean_hausdorff_distance_by_class))
+                   
     progress.write("Count by class: {}".format(class_count))
     
     if cfg['wandb']['state']: 

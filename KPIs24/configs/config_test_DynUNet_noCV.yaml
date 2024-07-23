@@ -2,7 +2,7 @@
 # File paths
 results_dir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/"
 datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Validation_Data/Task1_patch_level/validation/"
-modeldir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/DynUNet/CropPosNeg-ResizeLargerPatch-FlipRot"
+modeldir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/DynUNet/CropPosNeg-ResizeLargerPatch"
 
 device_number: 1
 seed: 44
@@ -10,10 +10,13 @@ ensemble: False
 nfolds: 'no'
 val_fold: 'validation_cohort'
 inference_type: 'test'
-save_masks: False
+
+save_masks: True
+save_probabilities: True
+
 
 preprocessing:
-  image_preprocess: 'CropPosNeg-ResizeLargerPatch-FlipRot' #'Resize', 'CropPosNeg-ResizeLargerPatch'
+  image_preprocess: 'CropPosNeg-ResizeLargerPatch' #'Resize', 'CropPosNeg-ResizeLargerPatch'
   roi_size: [512, 512]
   num_samples_per_image: 4
 
@@ -38,6 +41,7 @@ validation:
   val_interval: 1
   val_batch_size: 1
   num_workers: 4
+  dice_include_background: True
   cache_rate: 0.05
   sliding_window_inference: {
     'mode': 'gaussian' #'constant'
