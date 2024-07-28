@@ -1,7 +1,7 @@
 #Configuration for training
 # File paths
 results_dir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/"
-datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/pix2pix_data_augmentation_rearranged/" #pix2pix_data_augmentation_rearranged, split
 datadir_val: "/mnt/atlas/data_KPIs/data/KPIs24_Validation_Data/Task1_patch_level/validation/"
 
 device_number: 0
@@ -9,6 +9,11 @@ seed: 44
 resume_training: False
 nfolds: 'no'
 val_fold: 'validation_cohort'
+
+mode: {
+  'mode_type': 'pretraining',
+  'path': None, 
+}
 
 preprocessing:
   image_preprocess: 'CropPosNeg-ResizeLargerPatch' #'Resize', 'CropPosNeg-ResizeLargePatch-FlipRot', 'CropPosNeg'

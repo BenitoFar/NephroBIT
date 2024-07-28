@@ -1,7 +1,7 @@
 #Configuration for training
 # File paths
-results_dir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/"
-datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/pix2pix_data_augmentation_rearranged/" #pix2pix_data_augmentation_rearranged, split
+results_dir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_path_level_prueba_pretraining/"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/pix2pix_data_augmentation_rearranged/" #train
 datadir_val: "/mnt/atlas/data_KPIs/data/KPIs24_Validation_Data/Task1_patch_level/validation/"
 
 device_number: 0
@@ -9,12 +9,17 @@ seed: 44
 resume_training: False
 nfolds: 'no'
 val_fold: 'validation_cohort'
+class: ['56Nx', 'DN'] #56Nx
 
 mode: {
   'mode_type': 'pretraining',
   'path': None, 
 }
 
+# mode: {
+#   'mode_type': 'finetuning',
+#   'path': '/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_path_level_prueba_pretraining/nofoldCV/UnetDN_pretraining/CropPosNeg-ResizeLargerPatch/validation_cohort/best_metric_model.pth', 
+# }
 
 preprocessing:
   image_preprocess: 'CropPosNeg-ResizeLargerPatch' #'Resize', 
@@ -25,10 +30,10 @@ preprocessing:
 training:
   epoch: 100
   val_interval: 2
-  train_batch_size: 4
+  train_batch_size: 8
   val_batch_size: 1
   num_workers: 4
-  cache_rate: 0.2
+  cache_rate: 0.02
   loss: DiceCELoss
   loss_params: {
     'lambda_dice': 1.0,
@@ -37,16 +42,14 @@ training:
 
 # Model configuration
 model:
-  name: 'SwinUNETR'
+  name: 'Unet'
   params: {
     'in_channels': 3,
     'spatial_dims': 2,
     'out_channels': 1,
-    'feature_size': 24,
-    'num_heads': [3, 6, 12, 24],
-    'depths': [2, 2, 2, 2],
-    'use_v2': False
-
+    'f_maps_channels': [32, 64, 128, 256, 512],
+    'strides': [2, 2, 2, 2],
+    'num_res_units': 2,
   }
   optimizer: {
     'name': 'Adam',
@@ -67,7 +70,7 @@ model:
 
 # Wandb configuration
 wandb:
-  state: true
+  state: True
   project: 'nefrobit'
   entity: 'nefrobit'
   reinit: true

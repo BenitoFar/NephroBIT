@@ -38,6 +38,7 @@ from skimage.measure import label, regionprops
 from monai.utils import convert_to_numpy
 from monai.transforms import MapTransform
 from monai.config import KeysCollection
+from scipy.ndimage import binary_fill_holes
 from post_processing import crf
 
 def ensemble_evaluate(cfg, post_transforms, test_loader, models):
@@ -108,6 +109,10 @@ class PostProcessLabels(MapTransform):
                 pred_array[pred_array > 0] = 1
 
             # You can use binary morphology operations or any other method of your choice here
+            if self.operations['fill_holes']['status']:
+                pred_array = binary_fill_holes(pred_array, structure = np.ones((self.operations['fill_holes']['kernel_size'], self.operations['fill_holes']['kernel_size'])))
+             
+             
             if self.operations['closing']['status']:
                 pred_array = binary_closing(pred_array, footprint =np.ones((self.operations['closing']['kernel_size'], self.operations['closing']['kernel_size'])))
                            
@@ -116,7 +121,7 @@ class PostProcessLabels(MapTransform):
             
             if self.operations['crf']['status']:
                 pred_array = crf(d['image'], pred_array)
-                
+               
             # Convert back to torch.Tensor
             pred = torch.from_numpy(pred_array).to(pred.device)
             pred = pred.unsqueeze(0).unsqueeze(0)
@@ -206,7 +211,10 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                     AsDiscreted(keys='pred',threshold=0.5),
                     ]
                 )
-    
+
+        #random index of images to save
+        random_index = np.random.randint(0, len(val_loader), 25)
+        
         with torch.no_grad():
             val_images = None
             val_labels = None
@@ -246,8 +254,9 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                 
                 #save prediction probabilies numpy array as npy file
                 if cfg['save_probabilities']: 
-                    os.makedirs(os.path.join(results_dir, "predicted_probabilities"), exist_ok=True)
-                    np.save(os.path.join(results_dir, "predicted_probabilities", f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.npy'), val_outputs.cpu().numpy().squeeze())
+                    results_probability_dir = os.path.join(results_dir, "predicted_probabilities" , f'{val_data["case_class"][0]}', f'{val_data["case_id"][0]}', 'mask')
+                    os.makedirs(results_probability_dir, exist_ok=True)
+                    np.save(os.path.join(results_probability_dir, f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.npy'), val_outputs.cpu().numpy().squeeze())
                 
                 #apply post transforms
                 val_outputs = [val_post_transforms({'pred': val_outputs , 'image': val_images})['pred'] for i in decollate_batch(val_outputs)]
@@ -258,10 +267,14 @@ def evaluate_func(cfg, val_loader, results_dir, save_masks=False):
                 actual_hausdorff_distance = hausdorff_distance_metric(y_pred=val_outputs[0], y=val_labels)
                 
                 #save prediction mask as jpg
-                if save_masks: save_mask((val_outputs[0].cpu().numpy().squeeze()*255).astype('uint8'), os.path.join(results_dir_masks, f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.png'))
-                df.loc[idx_val, 'id'] = val_data["label_path"][0].split("/")[-3]
+                if save_masks: 
+                    if idx_val in random_index:
+                        results_logits_dir = os.path.join(results_dir, "predicted_masks" , f'{val_data["case_class"][0]}', f'{val_data["case_id"][0]}', 'mask')
+                        os.makedirs(results_logits_dir, exist_ok=True)
+                        save_mask((val_outputs[0].cpu().numpy().squeeze()*255).astype('uint8'), os.path.join(results_logits_dir, f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.png'))
+                df.loc[idx_val, 'id'] = val_data["case_id"][0]
                 df.loc[idx_val, 'id_patch'] = val_data["label_path"][0].split("/")[-1].split(".jpg")[0]
-                df.loc[idx_val, 'class'] = val_data["label_path"][0].split("/")[-4]
+                df.loc[idx_val, 'class'] = val_data["case_class"][0]
                 df.loc[idx_val, 'dice'] = actual_dice.cpu().numpy().squeeze()
                 
                 df.loc[idx_val, 'hausdorff_distance'] = actual_hausdorff_distance.cpu().numpy().squeeze()

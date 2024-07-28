@@ -12,7 +12,7 @@ val_fold: 'validation_cohort'
 inference_type: 'test'
 
 save_masks: True
-save_probabilities: True
+save_probabilities: False
 
 
 preprocessing:
@@ -21,7 +21,7 @@ preprocessing:
   num_samples_per_image: 4
 
 postprocessing:
-  'status': False
+  'status': True
   'threshold': 0.5
   'operations': {'remove_small_components':{  
                               'status': True,
@@ -33,7 +33,10 @@ postprocessing:
                               'status': True,
                               'kernel_size': 10},
                   'crf':{
-                              'status': False,}
+                              'status': False,},
+                  'fill_holes':{
+                              'status': True,
+                              'kernel_size': 10}
                               }
 
 # Training configuration
@@ -41,8 +44,8 @@ validation:
   val_interval: 1
   val_batch_size: 1
   num_workers: 4
+  cache_rate: 0.5
   dice_include_background: True
-  cache_rate: 0.05
   sliding_window_inference: {
     'mode': 'gaussian' #'constant'
   }

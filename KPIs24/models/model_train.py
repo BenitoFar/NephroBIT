@@ -190,7 +190,7 @@ def train(cfg, train_loader, val_loader, results_dir):
                 
                 metric_values.append(metric)
                 
-                if metric > best_metric: #should it be >=?
+                if metric >= best_metric: #should it be >=?
                     best_metric = metric
                     best_metric_epoch = epoch + 1
                     torch.save({
@@ -236,4 +236,4 @@ def train(cfg, train_loader, val_loader, results_dir):
             val_outputs = sliding_window_inference(val_images, cfg['preprocessing']['roi_size'], sw_batch_size, model)
             val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
             #save output label image
-            save_mask_jpg(val_outputs, os.path.join(results_dir, 'predicted_masks', f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.jpg'))
+            save_mask(val_outputs, os.path.join(results_dir, 'predicted_masks', f'{val_data["label_path"][0].split("/")[-1].split(".jpg")[0]}.jpg'))

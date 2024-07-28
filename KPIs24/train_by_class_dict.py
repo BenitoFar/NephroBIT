@@ -13,7 +13,6 @@ from monai.data import decollate_batch, DataLoader, CacheDataset
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from monai.optimizers import WarmupCosineSchedule
 from monai.losses import DiceCELoss
-from monai.apps.nuclick.transforms import SplitLabelMined
 from monai.apps import CrossValidation
 from monai.inferers import sliding_window_inference
 from monai.metrics import DiceMetric
@@ -42,7 +41,7 @@ import matplotlib.pyplot as plt
 from monai.utils import set_determinism
 import wandb 
 import random
-from utilites import seed_everything, prepare_data, load_config, save_mask_jpg, show_image, get_transforms, get_model
+from utilites import seed_everything, prepare_data, load_config, save_mask, show_image, get_transforms, get_model
 from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
 from models import train
 torch.autograd.set_detect_anomaly(True)
@@ -54,10 +53,10 @@ def main(cfg):
     cfg = load_config(cfg)
     
     if cfg['wandb']['state']:
-        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{'_'.join([c for c in cfg['class']])}-{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
+        run_name = f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{'_'.join([c for c in cfg['class']])}{('_'+ cfg['mode']['mode_type'] if len(cfg['mode']['mode_type']) > 1 else '')}-{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}"
         wandb.init(project=cfg['wandb']['project'], 
                 name=run_name, 
-                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
+                group= f"{cfg['wandb']['group_name']}_{cfg['model']['name']}_{'_'.join([c for c in cfg['class']])}{cfg['mode']['mode_type']}_{cfg['nfolds']}foldcv_{cfg['preprocessing']['image_preprocess']}",
                 entity = cfg['wandb']['entity'],
                 save_code=True, 
                 reinit=cfg['wandb']['reinit'], 
@@ -86,8 +85,13 @@ def main(cfg):
         #get train list files
         data_list_train = prepare_data(cfg['datadir'])
         data_list_val = prepare_data(cfg['datadir_val'])
-    #select only the data from the classes that are in the list cfg['class']
-    data_list_train = [item for item in data_list_train if item['case_class'] in cfg['class']]
+        
+    if cfg['mode']['mode_type'] != 'pretraining':
+        #select only the data from the classes that are in the list cfg['class']
+        data_list_train = [item for item in data_list_train if item['case_class'] in cfg['class']]
+    else:
+        data_list_train = [item for item in data_list_train for c in cfg['class'] if 'pix2pix_' + c in item['img']]
+        
     data_list_val = [item for item in data_list_val if item['case_class'] in cfg['class']]
     
     print('Number of training images:', len(data_list_train), 'Number of validation images:', len(data_list_val))
@@ -105,7 +109,7 @@ def main(cfg):
     val_loader = DataLoader(val_dss, batch_size=cfg['training']['val_batch_size'], num_workers=cfg['training']['num_workers'], persistent_workers=True, pin_memory=torch.cuda.is_available())
     
     # check same train images
-    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'] + '_'.join([c for c in cfg['class']]), cfg['preprocessing']['image_preprocess'],  f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
+    results_fold_dir = os.path.join(cfg['results_dir'], f"{cfg['nfolds']}foldCV", cfg['model']['name'] + '_'.join([c for c in cfg['class']]) + ('_'+ cfg['mode']['mode_type'] if len(cfg['mode']['mode_type']) > 1 else ''), cfg['preprocessing']['image_preprocess'],  f"{('fold_' + str(cfg['val_fold']) if cfg['val_fold'] != 'validation_cohort' else 'validation_cohort')}")
     os.makedirs(os.path.join(results_fold_dir, f'train_images_examples'), exist_ok=True)
     
     check_loader = train_loader
@@ -127,7 +131,7 @@ if __name__ == "__main__":
     #define parser to pass the configuration file
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_train_Unet_noCV.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/scritp_perseo/NephroBIT/KPIs24/configs/config_pretrain_Unet_noCV_by_class.yaml")
     args = parser.parse_args()
     cfg = args.config
     

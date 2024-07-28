@@ -65,6 +65,11 @@ def main(cfg):
                                     ('dice_include_background' if cfg['validation']['dice_include_background'] else 'dice_exclude_background'))
     
     os.makedirs(results_dir, exist_ok=True)
+    # if not os.path.exists(results_dir):
+    #     os.makedirs(results_dir, exist_ok=True)
+    # else:
+    #     results_dir = results_dir + '_v2'
+    #     os.makedirs(results_dir, exist_ok=True)
     
     #save cfg in this folder
     with open(os.path.join(results_dir, 'config.yaml'), 'w') as file:
