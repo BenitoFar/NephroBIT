@@ -1,7 +1,7 @@
 #Configuration for training
 # File paths
 results_dir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/"
-datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/pix2pix_data_augmentation_rearranged/" #pix2pix_data_augmentation_rearranged, split
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/" #pix2pix_data_augmentation_rearranged, split
 datadir_val: "/mnt/atlas/data_KPIs/data/KPIs24_Validation_Data/Task1_patch_level/validation/"
 
 device_number: 0
@@ -11,10 +11,9 @@ nfolds: 'no'
 val_fold: 'validation_cohort'
 
 mode: {
-  'mode_type': 'pretraining',
-  'path': None, 
+  'mode_type': 'finetuning',
+  'path': '/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/SwinUNETR_pretraining/CropPosNeg-ResizeLargerPatch/validation_cohort/best_metric_model.pth', 
 }
-
 
 preprocessing:
   image_preprocess: 'CropPosNeg-ResizeLargerPatch' #'Resize', 
@@ -23,12 +22,12 @@ preprocessing:
 
 # Training configuration
 training:
-  epoch: 100
-  val_interval: 2
+  epoch: 150
+  val_interval: 1
   train_batch_size: 4
   val_batch_size: 1
-  num_workers: 4
-  cache_rate: 0.2
+  num_workers: 6 #4
+  cache_rate: 0.3
   loss: DiceCELoss
   loss_params: {
     'lambda_dice': 1.0,

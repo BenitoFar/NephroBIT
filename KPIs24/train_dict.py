@@ -13,7 +13,6 @@ from monai.data import decollate_batch, DataLoader, CacheDataset
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from monai.optimizers import WarmupCosineSchedule
 from monai.losses import DiceCELoss
-from monai.apps.nuclick.transforms import SplitLabelMined
 from monai.apps import CrossValidation
 from monai.inferers import sliding_window_inference
 from monai.metrics import DiceMetric
@@ -123,7 +122,7 @@ if __name__ == "__main__":
     #define parser to pass the configuration file
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_train_DynUNet_noCV.yaml")
+    parser.add_argument("--config", help="configuration file", default="/home/benito/script/NephroBIT/KPIs24/configs/config_train_swinUNETR_noCV.yaml")
     args = parser.parse_args()
     cfg = args.config
     

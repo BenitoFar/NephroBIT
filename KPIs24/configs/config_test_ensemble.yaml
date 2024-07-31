@@ -8,18 +8,19 @@ device_number: 1
 seed: 44
 ensemble: True
 models_list: [
-              "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/Unet/CropPosNeg/validation_cohort/best_metric_model.pth", 
-              "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/SwinUNETR/CropPosNeg/validation_cohort/best_metric_model.pth",
-              # "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/DynUNet/CropPosNeg/validation_cohort/best_metric_model.pth"
+              # "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/Unet/CropPosNeg/validation_cohort/best_metric_model.pth", 
+              "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/SwinUNETR_finetuning/CropPosNeg-ResizeLargerPatch/validation_cohort/best_metric_model.pth",
+              "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/DynUNet_finetuning/CropPosNeg-ResizeLargerPatch/validation_cohort/best_metric_model.pth"
               ]
 
 nfolds: 'no'
 val_fold: 'validation_cohort'
 inference_type: 'test'
 save_masks: False
+save_probabilities: False
 
 preprocessing:
-  image_preprocess: 'CropPosNeg' #'Resize', 
+  image_preprocess: 'CropPosNeg-ResizeLargerPatch' #'Resize', 
   roi_size: [512, 512]
   num_samples_per_image: 4
 
@@ -35,6 +36,11 @@ postprocessing:
                   'opening':{
                               'status': True,
                               'kernel_size': 10},
+                  'crf':{
+                              'status': False,},
+                  'fill_holes':{
+                              'status': True,
+                              'kernel_size': 10}
                               }
 
 # Training configuration
@@ -43,6 +49,7 @@ validation:
   val_batch_size: 1
   num_workers: 4
   cache_rate: 0.05
+  dice_include_background: True
   sliding_window_inference: {
     'mode': 'gaussian' #'constant'
   }
@@ -52,19 +59,20 @@ validation:
 
 # Model configuration
 model:
-  name: ['Unet',
+  name: [
+          # 'Unet',
           'SwinUNETR', 
-          # 'DynUNet'
+          'DynUNet'
           ]
   params: [
-    {
-    'in_channels': 3,
-    'spatial_dims': 2,
-    'out_channels': 1,
-    'f_maps_channels': [32, 64, 128, 256, 512],
-    'strides': [2, 2, 2, 2],
-    'num_res_units': 2,
-  }, 
+  #   {
+  #   'in_channels': 3,
+  #   'spatial_dims': 2,
+  #   'out_channels': 1,
+  #   'f_maps_channels': [32, 64, 128, 256, 512],
+  #   'strides': [2, 2, 2, 2],
+  #   'num_res_units': 2,
+  # }, 
   {
     'in_channels': 3,
     'spatial_dims': 2,
@@ -73,13 +81,14 @@ model:
     'num_heads': [3, 6, 12, 24],
     'depths': [2, 2, 2, 2],
     'use_v2': False},
-  # {
-  #   'in_channels': 3,
-  #   'spatial_dims': 2,
-  #   'out_channels': 1,
-  #   'deep_supervision': False,
-  #   'res_block': True,
-  # }
+  {
+    'in_channels': 3,
+    'spatial_dims': 2,
+    'out_channels': 1,
+    'deep_supervision': False,
+    'deep_supr_num': 2,
+    'res_block': True,
+  }
     ]
 
 # Wandb configuration
