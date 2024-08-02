@@ -157,10 +157,6 @@ class PostProcessLabels(MapTransform):
 
         for key in self.key_iterator(d):
 
-            # print(isinstance(d[key], MetaTensor))
-
-            print(d[key].shape)
-
             if isinstance(d[key], MetaTensor):
                 pred_array = d[key].get_array()
             
@@ -204,12 +200,9 @@ class PostProcessLabels(MapTransform):
             # Convert back to MetaTensor / Tensor
             if isinstance(d[key], MetaTensor):
                 d[key].set_array(pred_array)
-                print('OK')
             else:
                 pred = torch.from_numpy(pred_array).to(pred.device)
                 d[key] = pred if isinstance(d[key], torch.Tensor) else convert_to_numpy(pred)
-
-            print(d[key].shape) #TODO:REMOVE
         
         return d
     

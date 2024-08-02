@@ -11,9 +11,9 @@ RUN pip3 install -r requirements.txt
 # ## Copy all files (here "./src/run_inference.py")
 # COPY ./ ./
 
-# RUN mkdir /nephrobit/
-# COPY ./src /nephrobit
-# RUN chmod -R 777 /nephrobit
+RUN mkdir /nephrobit/
+COPY ./ /nephrobit
+RUN chmod -R 777 /nephrobit
 
 ## Execute the inference command 
 CMD ["/nephrobit/src/inference_patch.py"]
