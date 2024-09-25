@@ -1,0 +1,49 @@
+# File paths
+data_path: "/mnt/atlas/data_KPIs/data/KPIs24_Training_Data/Task1_patch_level/split/"
+val_path: "/mnt/atlas/data_KPIs/data/KPIs24_Validation_Data/Task1_patch_level/validation/"
+log_dir: "/home/dmontalvo/projects/kpis24_challenge/logs"
+
+ckpt: "/home/dmontalvo/projects/kpis24_challenge/logs/CellViT_SAM_base_stage0/stage_0/last_model.pth"
+
+exp_name: "CellViT_SAM_base_RandStainNA_stage2"
+
+# Data config
+seed: 13
+patch_size: [512, 512]
+cache_rate: 0.1
+# nfolds: 3
+# val_fold: 0
+
+# Hyperparameters
+batch_size: 8
+epochs: 50
+val_freq: 1
+
+# Model config
+stage: 2
+use_gpu: True
+num_workers: 8
+model_name: "CellViT"
+enc_name: "sam_vit_b"
+
+# LR scheduler
+lr: 0.0001
+scheduler:
+  warmup_epochs: 5
+  cycles: 0.5
+
+# RandStainNA config
+randStainNA:
+  yaml_file: "/home/dmontalvo/projects/kpis24_challenge/codes/NephroBIT/config/dataset_LAB_randomTrue_n500.yaml"
+  std_hyper: -0.7
+  distribution: "normal"
+  probability: 0.6
+
+# Wandb configuration
+wandb:
+  mode: "online"
+  project: "nefrobit"
+  entity: "nefrobit"
+  reinit: True
+  resume: "allow"
+  group_name: "KPIs24"

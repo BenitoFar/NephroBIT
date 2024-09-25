@@ -1,0 +1,76 @@
+#Configuration for training
+# File paths
+results_dir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/"
+datadir: "/mnt/atlas/data_KPIs/data/KPIs24_Validation_Data/Task1_patch_level/validation/"
+modeldir: "/mnt/atlas/data_KPIs/data/Results_segmentation/Task1_patch_level/nofoldCV/DynUNet/CropPosNeg-ResizeLargerPatch"
+
+device_number: 1
+seed: 44
+ensemble: False
+nfolds: 'no'
+val_fold: 'validation_cohort'
+inference_type: 'test'
+
+save_masks: True
+save_probabilities: False
+
+
+preprocessing:
+  image_preprocess: 'CropPosNeg-ResizeLargerPatch' #'Resize', 'CropPosNeg-ResizeLargerPatch'
+  roi_size: [512, 512]
+  num_samples_per_image: 4
+
+postprocessing:
+  'status': True
+  'threshold': 0.5
+  'operations': {'remove_small_components':{  
+                              'status': True,
+                              'min_size': 100}, 
+                  'closing':{
+                              'status': True,
+                              'kernel_size': 10}, 
+                  'opening':{
+                              'status': True,
+                              'kernel_size': 10},
+                  'crf':{
+                              'status': False,},
+                  'fill_holes':{
+                              'status': True,
+                              'kernel_size': 10}
+                              }
+
+# Training configuration
+validation:
+  val_interval: 1
+  val_batch_size: 1
+  num_workers: 4
+  cache_rate: 0.5
+  dice_include_background: True
+  sliding_window_inference: {
+    'mode': 'gaussian' #'constant'
+  }
+  timetestaugmentation: {
+    'status': False,
+  }
+
+# Model configuration
+model:
+  name: 'DynUNet'
+  params: {
+    'in_channels': 3,
+    'spatial_dims': 2,
+    'out_channels': 1,
+    'deep_supervision': False,
+    'deep_supr_num': 3,
+    'res_block': True,
+  }
+  
+
+# Wandb configuration
+wandb:
+  state: False
+  project: 'nefrobit'
+  entity: 'nefrobit'
+  reinit: true
+  resume: 'allow'
+  group_name: 'KPIs24'
